@@ -1,8 +1,7 @@
 # Rapport Technique - QuestLang Compiler 
 
 **Projet**: Techniques de Compilation - Mini-Projet  
-**Auteur**: Ayari Wiem / Sakroufi Aya / Ourari Ranim / Ayadi Soumaya
-**Date**: 2025-2026 
+**Auteur**: Ayari Wiem / Sakroufi Aya / Ourari Ranim / Ayadi Soumaya 
 
 
 ---
