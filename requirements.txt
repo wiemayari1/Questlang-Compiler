@@ -1,0 +1,3 @@
+# QuestLang Compiler v2.0
+# Aucune dependance externe requise
+# Python >= 3.10
