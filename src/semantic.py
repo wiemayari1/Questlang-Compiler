@@ -2,17 +2,16 @@
 """
 Analyse semantique pour QuestLang v2.
 4 passes d'analyse :
-  1. Table des symboles (symboles, doublons, references indefinies)
-  2. Accessibilite (DFS depuis start_quest)
-  3. Economie (analyse de flux d'items/or)
-  4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
+ 1. Table des symboles (symboles, doublons, references indefinies)
+ 2. Accessibilite (DFS depuis start_quest)
+ 3. Economie (analyse de flux d'items/or)
+ 4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
 """
 
 from collections import defaultdict, deque
 from typing import List, Dict, Set, Tuple, Optional
 from ast_nodes import *
 from errors import SemanticError, ErrorReporter
-
 
 class SymbolTable:
     """Table des symboles pour toutes les entites du monde."""
@@ -61,6 +60,12 @@ class SymbolTable:
         self.functions[func.name] = func
 
     def add_variable(self, var: VarDeclNode):
+        """CORRECTION: Detection des variables dupliquees."""
+        if var.name in self.variables:
+            raise SemanticError(
+                f"Variable '{var.name}' deja definie",
+                var.line, var.column
+            )
         self.variables[var.name] = var
 
     def has_quest(self, name: str) -> bool:
@@ -120,7 +125,7 @@ class SemanticAnalyzer:
             if isinstance(decl, WorldNode):
                 if self.symbol_table.world is not None:
                     self.reporter.add_error(
-                        "DUPLICATE_WORLD", 
+                        "DUPLICATE_WORLD",
                         "Le monde est defini plusieurs fois",
                         decl.line, decl.column
                     )

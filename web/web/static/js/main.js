@@ -177,6 +177,7 @@
  }
  });
 
+ // ===== CORRECTION : Listener pour le chargement de fichier =====
  if (fileInput) {
  fileInput.addEventListener('change', function(e) {
  var file = e.target.files[0];
@@ -197,6 +198,7 @@
  if (fileInput) fileInput.click();
  });
  }
+ // ================================================================
  }
 
  async function compile() {

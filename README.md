@@ -1,149 +1,124 @@
-# QuestLang - Compilateur pour Mondes RPG
+# QuestLang Forge - Compilateur pour Mondes RPG
 
-**Version 2.0** | Projet de Techniques de Compilation | 2024-2025
+QuestLang est un langage dedie (DSL) pour decrire des mondes de jeu RPG. Il permet de declarer des quetes, des objets, des personnages non-joueurs et de verifier automatiquement la coherence du monde a la compilation grace a quatre passes d'analyse semantique.
 
-QuestLang est un DSL (Domain-Specific Language) permettant de decrire des mondes de jeu RPG (quetes, items, PNJ) et de verifier statiquement leur coherence a la compilation grace a 4 passes d'analyse semantique.
+---
 
-## Table des matieres
+## Apercu
 
-- [Fonctionnalites](#fonctionnalites)
-- [Syntaxe du langage](#syntaxe-du-langage)
-- [Installation](#installation)
-- [Utilisation](#utilisation)
-- [Structure du projet](#structure-du-projet)
-- [Tests](#tests)
-- [Choix techniques](#choix-techniques)
-- [Auteur](#auteur)
+QuestLang transforme un fichier texte decrivant un monde en une representation intermediaire JSON verifiee, avec detection des erreurs lexicales, syntaxiques et semantiques.
+
+```
+Source .ql -> Lexer -> Parser -> AST -> 4 Passes Semantiques -> IR JSON + Rapport
+```
+
+---
 
 ## Fonctionnalites
 
-### Pipeline de compilation
+### Langage QuestLang
+- **Declarations** : `world`, `quest`, `item`, `npc`
+- **Variables et types** : `var`, `int`, `float`, `bool`, `string`, `list`
+- **Expressions** : arithmetiques, logiques, comparaisons
+- **Controle** : `if`/`else`, `while`, `for`/`in`
+- **Fonctions** : `func` avec parametres et `return`
+- **Instructions speciales** : `give`, `take`, `call`
 
-```
-Source .ql -> Lexer -> Parser -> AST -> 4 Passes Semantiques -> IR JSON + Rapport HTML
-```
+### Pipeline semantique
 
-### 4 passes semantiques
+| Passe | Algorithme | Detection |
+|-------|-----------|-----------|
+| 1 - Symboles | Table des symboles | Doublons, references indefinies |
+| 2 - Accessibilite | DFS iteratif O(V+E) | Quetes inaccessibles, fin inaccessible |
+| 3 - Economie | Analyse de flux | Inflation, deficit, surplus |
+| 4 - Cycles | Tarjan SCC O(V+E) | Deadlocks, items morts, PNJ inutiles |
 
-| Passe | Algorithme | Ce qu'elle detecte |
-|-------|-----------|-------------------|
-| Passe 1 - Symboles | Table des symboles | Doublons, references indefinies |
-| Passe 2 - Accessibilite | DFS iteratif O(V+E) | Quetes inaccessibles, fin inaccessible |
-| Passe 3 - Economie | Analyse de flux | Inflation/deflation d'or, deficit/surplus d'items |
-| Passe 4 - Cycles | Tarjan SCC O(V+E) | Deadlocks narratifs, items morts, PNJ inutiles |
+### Simulation du monde
+Apres compilation reussie, l'interface web permet de simuler le deroulement du monde :
+- Ordre de completion des quetes (topologique)
+- Evolution de l'inventaire du joueur (or, XP, items)
+- Visualisation pas-a-pas ou lecture automatique
+- Detection de la condition de victoire
 
-### Fonctionnalites du langage
+---
 
-- **Blocs de declaration**: `world`, `quest`, `item`, `npc`
-- **Variables et types**: `var`, `int`, `float`, `bool`, `string`, `list`
-- **Expressions**: arithmetiques (+, -, *, /, %, ^), logiques (`and`, `or`, `not`), comparaisons (==, !=, <, >, <=, >=)
-- **Structures de controle**: `if`/`else`, `while`, `for`/`in`
-- **Fonctions utilisateur**: `func` avec parametres et `return`
-- **Instructions speciales**: `give`, `take`, `call`
-- **Gestion des erreurs**: lexicales, syntaxiques, semantiques avec localisation precise
+## 🚀 Guide d'installation rapide
 
-## Syntaxe du langage
+### Prerequis
+- Python **3.10 ou superieur**
+- `pip` a jour
+- Un navigateur moderne (Chrome, Firefox, Edge)
 
-### Bloc world
-
-```ql
-world mon_monde {
-    start: premiere_quete;
-    start_gold: 50;
-    win_condition: quete_finale;
-}
-```
-
-### Bloc quest
-
-```ql
-quest identifiant_quete {
-    title:     "Titre affiche";
-    desc:      "Description longue";
-    requires:  quete_prerequis_1, quete_prerequis_2;
-    unlocks:   quete_suivante;
-    rewards:   xp 200, gold 50, 1 epee_magique;
-    costs:     2 cristaux;
-    condition: "Condition narrative";
-
-    script {
-        var bonus = 10;
-        if (bonus > 5) {
-            give xp bonus;
-        }
-    }
-}
-```
-
-### Bloc item
-
-```ql
-item identifiant_item {
-    title:     "Nom affiche";
-    value:     50;
-    stackable: true;
-    type:      weapon;
-}
-```
-
-### Bloc npc
-
-```ql
-npc identifiant_npc {
-    title:       "Nom du PNJ";
-    location:    village_entree;
-    gives_quest: quete1, quete2;
-}
-```
-
-### Fonctions
-
-```ql
-func calcul_bonus(base, multiplicateur) {
-    var resultat = base * multiplicateur;
-    if (resultat > 100) {
-        resultat = 100;
-    }
-    return resultat;
-}
-```
-
-### Recompenses
-
-```ql
-rewards: xp 500, gold 100, 3 cristal_ombre;
-```
-
-### Commentaires
-
-```ql
-// Commentaire sur une ligne
-/* Commentaire
-   multi-ligne */
-```
-
-## Installation
-
+### 1. Cloner le projet
 ```bash
-# Cloner le depot
 git clone https://github.com/wiemayari1/Questlang-Compiler.git
 cd Questlang-Compiler
-
-# Aucune dependance externe requise (Python 3.10+)
-python --version  # >= 3.10
 ```
 
-## Utilisation
-
-### Compiler un fichier
-
+### 2. Lancer le compilateur en ligne de commande (CLI)
+Aucune dependance externe n'est requise pour le CLI.
 ```bash
-python questlang.py mon_monde.ql
+# Tester la compilation d'un exemple
+python questlang.py examples/valid_world.ql
+
+# Generer le rapport HTML + IR JSON
+python questlang.py examples/valid_world.ql --html --ir --out ./rapports/
 ```
 
-### Options
+### 3. Lancer l'interface web (QuestLang Forge)
+```bash
+cd web
+
+# (Recommande) Creer un environnement virtuel
+python -m venv venv
+
+# Activer l'environnement virtuel
+# Sur Windows :
+venv\Scripts\activate
+# Sur macOS/Linux :
+source venv/bin/activate
+
+# Installer les dependances
+pip install -r requirements.txt
+
+# Demarrer le serveur Flask
+python app.py
+```
+
+### 4. Ouvrir dans le navigateur
+Rendez-vous sur : **http://localhost:5000**
+
+### 5. Utiliser l'interface
+1. **Charger un exemple** : selectionne un monde dans le menu deroulant en haut.
+2. **Charger ton fichier** : clique sur le bouton 📂 puis choisis un fichier `.ql` depuis ton ordinateur.
+3. **Compiler** : clique sur le bouton **Compiler** pour voir l'analyse lexicale, syntaxique, les 4 passes semantiques, le graphe du monde et la simulation.
+4. **Explorer** : utilise les onglets *Carte*, *Analyse*, *Simulation* et la console en bas.
+
+### 6. Executer les tests
+```bash
+python tests/test_compiler.py
+```
+
+---
+
+## Utilisation CLI
 
 ```bash
+# Compilation simple
+python questlang.py examples/valid_world.ql
+
+# Avec rapport HTML
+python questlang.py examples/valid_world.ql --html --out rapports/
+
+# Afficher l'IR JSON
+python questlang.py examples/valid_world.ql --ir
+
+# Tester le monde avec erreurs
+python questlang.py examples/broken_world.ql
+```
+
+Options disponibles :
+```
 --html          Generer un rapport HTML avec graphe de dependances
 --ir            Afficher l'IR JSON genere
 --tokens        Afficher les tokens lexicaux
@@ -153,76 +128,62 @@ python questlang.py mon_monde.ql
 --no-banner     Desactiver la banniere
 ```
 
-### Exemples
+---
 
-```bash
-# Compilation simple
-python questlang.py examples/valid_world.ql
+## Interface Web - QuestLang Forge
 
-# Compilation avec rapport HTML
-python questlang.py examples/valid_world.ql --html --out rapports/
+Une interface graphique interactive et immersive pour editer, compiler, visualiser et simuler les mondes QuestLang dans le navigateur.
 
-# Voir l'IR JSON
-python questlang.py examples/valid_world.ql --ir
+### Fonctionnalites de l'interface
 
-# Tester sur le monde brise (avec erreurs intentionnelles)
-python questlang.py examples/broken_world.ql
-```
+**Editeur**
+- Syntax highlighting QuestLang avec coloration personnalisee
+- Snippets : taper `quest` + Ctrl+Space genere le squelette d'une quete
+- Pliage de code pour les blocs imbriques
+- Marqueurs d'erreur cliquables dans la gouttiere
+- Sauvegarde auto dans le navigateur (localStorage)
 
-## Codes d'erreur
+**Carte du Monde**
+- Graphe interactif des quetes, objets et PNJ avec vis.js
+- Filtres : afficher/masquer par type (quetes, items, PNJ, recompenses)
+- Layout hierarchique gauche-droite avec zoom et deplacement
+- Physique activable/desactivable
+- Export PNG du graphe
 
-### Passe 1 - Symboles
+**Analyse Semantique**
+- Dashboard des 4 passes avec statuts colores et metriques detaillees
+- Mode pas-a-pas : execution sequentielle animee des passes
+- Graphiques : camembert de repartition et barres d'economie (Chart.js)
+- Metriques : compteurs en temps reel
 
-| Code | Severite | Description |
-|------|----------|-------------|
-| DUPLICATE_QUEST | ERREUR | Quete definie plusieurs fois |
-| DUPLICATE_ITEM | ERREUR | Item defini plusieurs fois |
-| DUPLICATE_NPC | ERREUR | PNJ defini plusieurs fois |
-| DUPLICATE_FUNC | ERREUR | Fonction definie plusieurs fois |
-| UNDEF_QUEST_REF | ERREUR | Reference a une quete inexistante |
-| UNDEF_UNLOCK_REF | ERREUR | Reference a une quete inexistante dans unlocks |
-| UNDEF_ITEM_REF | ERREUR | Item inexistant dans rewards/costs |
-| UNDEF_FUNC_REF | ERREUR | Appel a une fonction inexistante |
-| UNDEF_START_QUEST | ERREUR | start pointe vers une quete inexistante |
-| UNDEF_WIN_COND | ERREUR | win_condition pointe vers une quete inexistante |
+**Simulation**
+- Inventaire du joueur : or, XP, nombre d'items
+- Timeline des quetes avec etats (completee, active, future)
+- Controles : precedent, suivant, lecture automatique, reinitialisation
+- Barre de progression visuelle
+- Details par etape : recompenses et couts appliques
 
-### Passe 2 - Accessibilite
+**Export**
+- Telechargement du fichier `.ql`
+- Telechargement de l'IR JSON
+- Telechargement du graphe en PNG
 
-| Code | Severite | Description |
-|------|----------|-------------|
-| UNREACHABLE_QUEST | ERREUR | Quete inaccessible depuis start_quest |
-| WIN_UNREACHABLE | ERREUR | La condition de victoire n'est jamais atteignable |
-| WIN_REACHABLE | INFO | Confirmation que la fin est atteignable |
-| NO_REWARD | AVERTISSEMENT | Quete accessible sans recompense |
-| NO_WORLD | AVERTISSEMENT | Pas de bloc world |
+**Console**
+- Journal de compilation avec horodatage
+- Localisation precise (ligne:colonne)
+- Couleurs par severite (erreur, alerte, info, succes)
 
-### Passe 3 - Economie
-
-| Code | Severite | Description |
-|------|----------|-------------|
-| ITEM_DEFICIT | ERREUR | Item consomme plus souvent qu'il n'est produit |
-| ITEM_SURPLUS | AVERTISSEMENT | Item produit sans jamais etre consomme |
-| GOLD_INFLATION | AVERTISSEMENT | Ratio injecte/consomme > 10x |
-| GOLD_DEFLATION | AVERTISSEMENT | Ratio < 0.5x |
-
-### Passe 4 - Cycles
-
-| Code | Severite | Description |
-|------|----------|-------------|
-| DEADLOCK_CYCLE | ERREUR | Cycle de dependances mutuelles |
-| UNLOCK_LOOP | AVERTISSEMENT | Boucle d'unlock |
-| DEAD_ITEM | AVERTISSEMENT | Item declare mais jamais utilise |
-| IDLE_NPC | AVERTISSEMENT | PNJ qui ne donne aucune quete |
+---
 
 ## Structure du projet
 
 ```
 questlang/
-|-- questlang.py              # CLI principal et orchestrateur
+|-- questlang.py              # CLI principal
 |-- src/
-|   |-- errors.py             # Gestion centralisee des erreurs
-|   |-- lexer.py              # Analyse lexicale (automate a etats)
-|   |-- parser.py             # Parser recursif descendant LL(1)
+|   |-- errors.py             # Gestion des erreurs
+|   |-- lexer.py              # Analyse lexicale
+|   |-- parser.py             # Analyse syntaxique LL(1)
 |   |-- ast_nodes.py          # Noeuds de l'AST
 |   |-- semantic.py           # 4 passes semantiques
 |   |-- codegen.py            # Generation IR JSON + HTML
@@ -231,10 +192,20 @@ questlang/
 |-- examples/
 |   |-- valid_world.ql        # Monde valide (Le Monde de Valdris)
 |   |-- broken_world.ql       # Monde avec erreurs intentionnelles
+|-- web/
+|   |-- app.py                # Serveur Flask (API REST)
+|   |-- requirements.txt      # Dependances web
+|   |-- templates/
+|   |   |-- index.html        # Interface unique
+|   |-- static/
+|   |   |-- css/style.css     # Theme RPG immersif
+|   |   |-- js/main.js        # Logique frontend complete
 |-- docs/
-|   |-- rapport.md            # Rapport technique detaille
+|   |-- rapport.md            # Rapport technique
 |-- README.md
 ```
+
+---
 
 ## Tests
 
@@ -242,29 +213,43 @@ questlang/
 python tests/test_compiler.py
 ```
 
-La suite couvre:
+Couverture :
+- 6 tests lexer (tokens, mots-cles, commentaires, nombres, chaines, localisation)
+- 7 tests parser (quetes, world, items, PNJ, recompenses, scripts, fonctions)
+- 3 tests semantiques Passe 1 (doublons, references indefinies)
+- 3 tests semantiques Passe 2 (accessibilite, victoire inaccessible, sans recompense)
+- 2 tests semantiques Passe 3 (deficit d'items, inflation d'or)
+- 2 tests semantiques Passe 4 (deadlock, items morts)
+- 4 tests d'integration (pipeline complet, HTML, JSON, monde brise)
 
-- **6 tests lexer**: tokens, mots-cles, commentaires, nombres, chaines, localisation
-- **7 tests parser**: quetes, world, items, PNJ, recompenses, scripts, fonctions
-- **3 tests semantiques Passe 1**: doublons, references indefinies
-- **3 tests semantiques Passe 2**: accessibilite, victoire inaccessible, sans recompense
-- **2 tests semantiques Passe 3**: deficit d'items, inflation d'or
-- **2 tests semantiques Passe 4**: deadlock, items morts
-- **4 tests d'integration**: pipeline complet, HTML, JSON, monde brise
+---
 
 ## Choix techniques
 
-- **Langage**: Python 3.10+ (lisibilite, rapidite de developpement)
-- **Lexer**: Automate a etats avec regex, une seule passe O(n)
-- **Parser**: Recursif descendant LL(1) avec recuperation d'erreurs
-- **AST**: Structure arborescente typee avec pattern Visitor
-- **Passe 2 (Accessibilite)**: DFS iteratif - O(V + E)
-- **Passe 3 (Economie)**: Analyse de flux avec accumulation
-- **Passe 4 (Cycles)**: Algorithme de Tarjan SCC - O(V + E)
-- **Sortie**: IR JSON (machine-readable) + rapport HTML (human-readable)
+- **Langage** : Python 3.10+ (lisibilite, rapidite de prototypage)
+- **Lexer** : Automate a etats avec expressions regulieres, une passe O(n)
+- **Parser** : Recursif descendant LL(1) avec recuperation d'erreurs
+- **AST** : Structure arborescente typee avec pattern Visitor
+- **Passe 2** : DFS iteratif - O(V + E)
+- **Passe 3** : Analyse de flux avec accumulation
+- **Passe 4** : Algorithme de Tarjan SCC - O(V + E)
+- **Sortie** : IR JSON (machine-readable) + rapport HTML (human-readable)
+- **Interface web** : Flask + CodeMirror + vis.js + Chart.js, zero dependance lourde
+- **Simulation** : Calcul d'ordre topologique des quetes avec evolution de l'inventaire
+
+---
+
+## Depannage courant
+
+| Probleme | Solution |
+|----------|----------|
+| `ModuleNotFoundError: No module named 'flask'` | `cd web && pip install -r requirements.txt` |
+| Le port 5000 est deja utilise | `python app.py` utilise le port 5000 par defaut. Ferme l'autre application ou modifie `port=5000` dans `app.py`. |
+| L'interface web affiche "Mode demo" | Le backend ne trouve pas les modules `src/`. Verifie que tu lances `app.py` depuis le dossier `web/` et que le dossier `src/` existe bien a la racine. |
+| Le fichier `.ql` ne se charge pas | Verifie que tu as bien la derniere version de `main.js` avec le listener sur `#file-input`. |
+
+---
 
 ## Auteur
 
-Projet realise dans le cadre du mini-projet de Techniques de Compilation (Conception et realisation d'un compilateur pour un langage personnalise).
-
-Departement GLSI-ISI, 1ere Ingenieur, 2024-2025.
+Ayari Wiem / Ourari Ranim / Ayadi Soumaya / Sakroufi Aya
