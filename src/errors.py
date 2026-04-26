@@ -1,11 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Module de gestion des erreurs pour QuestLang.
-Fournit une hierarchie d'exceptions et un systeme de reporting.
-"""
-
 class QuestLangError(Exception):
-    """Classe de base pour toutes les erreurs QuestLang."""
     def __init__(self, message, line=0, column=0, filename=""):
         self.message = message
         self.line = line
@@ -26,54 +20,31 @@ class QuestLangError(Exception):
         return self.message
 
 class LexicalError(QuestLangError):
-    """Erreur detectee pendant l'analyse lexicale."""
     pass
 
 class SyntaxError(QuestLangError):
-    """Erreur detectee pendant l'analyse syntaxique."""
     pass
 
 class SemanticError(QuestLangError):
-    """Erreur detectee pendant l'analyse semantique."""
     pass
 
-class RuntimeError(QuestLangError):
-    """Erreur detectee pendant l'execution."""
+class QuestLangRuntimeError(QuestLangError):
     pass
 
 class ErrorReporter:
-    """Collecte et formate les diagnostics de compilation."""
     def __init__(self):
         self.errors = []
         self.warnings = []
         self.infos = []
 
     def add_error(self, code, message, line=0, column=0, severity="ERROR"):
-        self.errors.append({
-            "code": code,
-            "message": message,
-            "line": line,
-            "column": column,
-            "severity": severity
-        })
+        self.errors.append({"code": code, "message": message, "line": line, "column": column, "severity": severity})
 
     def add_warning(self, code, message, line=0, column=0):
-        self.warnings.append({
-            "code": code,
-            "message": message,
-            "line": line,
-            "column": column,
-            "severity": "WARNING"
-        })
+        self.warnings.append({"code": code, "message": message, "line": line, "column": column, "severity": "WARNING"})
 
     def add_info(self, code, message, line=0, column=0):
-        self.infos.append({
-            "code": code,
-            "message": message,
-            "line": line,
-            "column": column,
-            "severity": "INFO"
-        })
+        self.infos.append({"code": code, "message": message, "line": line, "column": column, "severity": "INFO"})
 
     def has_errors(self):
         return len(self.errors) > 0
@@ -87,13 +58,3 @@ class ErrorReporter:
             "warning_count": len(self.warnings),
             "info_count": len(self.infos)
         }
-
-    def format_console(self):
-        lines = []
-        for e in self.errors:
-            lines.append(f"  [ERREUR] {e['code']}: {e['message']} (ligne {e['line']})")
-        for w in self.warnings:
-            lines.append(f"  [AVERTISSEMENT] {w['code']}: {w['message']} (ligne {w['line']})")
-        for i in self.infos:
-            lines.append(f"  [INFO] {i['code']}: {i['message']}")
-        return "\n".join(lines)
