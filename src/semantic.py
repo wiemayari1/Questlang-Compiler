@@ -2,10 +2,10 @@
 """
 Analyse semantique pour QuestLang v2.
 4 passes d'analyse :
-  1. Table des symboles (symboles, doublons, references indefinies)
-  2. Accessibilite (DFS depuis start_quest)
-  3. Economie (analyse de flux d'items/or)
-  4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
+ 1. Table des symboles (symboles, doublons, references indefinies)
+ 2. Accessibilite (DFS depuis start_quest)
+ 3. Economie (analyse de flux d'items/or)
+ 4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
 """
 
 import sys
@@ -389,7 +389,7 @@ class SemanticAnalyzer:
             # BONUS 3: Verifier si l'identifiant est une variable declaree
             # On ignore les mots-cles speciaux (xp, gold sont des ressources, pas des variables)
             reserved_names = {'xp', 'gold', 'true', 'false'}
-            if (not self.symbol_table.has_variable(expr.name) and 
+            if (not self.symbol_table.has_variable(expr.name) and
                 expr.name not in reserved_names and
                 not self.symbol_table.has_quest(expr.name) and
                 not self.symbol_table.has_item(expr.name) and
@@ -481,7 +481,7 @@ class SemanticAnalyzer:
                 return
 
         if not self.symbol_table.has_quest(start_quest):
-            return # Deja signale en passe 1
+            return  # Deja signale en passe 1
 
         # DFS iteratif
         visited = set()
@@ -550,8 +550,8 @@ class SemanticAnalyzer:
         Passe 3: Analyse economique du monde.
         Detecte: inflation/deflation d'or, deficit/surplus d'items.
         """
-        item_production = defaultdict(float) # item -> quantite produite
-        item_consumption = defaultdict(float) # item -> quantite consommee
+        item_production = defaultdict(float)  # item -> quantite produite
+        item_consumption = defaultdict(float)  # item -> quantite consommee
         gold_injected = 0.0
         gold_consumed = 0.0
 
@@ -611,15 +611,20 @@ class SemanticAnalyzer:
                     1, 1
                 )
 
-    def _eval_expr(self, node) -> float:
-        """Evalue une expression constante."""
+    def _eval_expr(self, node, _visited=None) -> float:
+        """Evalue une expression constante avec protection contre les cycles."""
+        if _visited is None:
+            _visited = set()
+
+        if node is None:
+            return 0.0
         if isinstance(node, LiteralNode):
             if isinstance(node.value, (int, float)):
                 return float(node.value)
             return 0.0
         if isinstance(node, BinaryOpNode):
-            left = self._eval_expr(node.left)
-            right = self._eval_expr(node.right)
+            left = self._eval_expr(node.left, _visited)
+            right = self._eval_expr(node.right, _visited)
             if node.op == '+':
                 return left + right
             elif node.op == '-':
@@ -632,10 +637,14 @@ class SemanticAnalyzer:
                 return left ** right
             return 0.0
         if isinstance(node, IdentifierNode):
-            # Essayer de resoudre une variable constante
             var = self.symbol_table.get_variable(node.name)
             if var and var.init_expr:
-                return self._eval_expr(var.init_expr)
+                var_id = id(var.init_expr)
+                if var_id in _visited:
+                    return 0.0  # Cycle detecte, retourner 0
+                _visited.add(var_id)
+                return self._eval_expr(var.init_expr, _visited)
+            return 0.0
         return 0.0
 
     # ============================================================
@@ -656,7 +665,7 @@ class SemanticAnalyzer:
                     graph[qname].append(req)
             if "unlocks" in quest.properties and isinstance(quest.properties["unlocks"], IdListNode):
                 for unlocked in quest.properties["unlocks"].ids:
-                    graph[unlocked].append(qname) # unlocked depend de qname
+                    graph[unlocked].append(qname)  # unlocked depend de qname
 
         # Tarjan SCC
         index_counter = [0]
