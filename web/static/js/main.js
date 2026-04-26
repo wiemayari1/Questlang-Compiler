@@ -24,11 +24,27 @@ function init() {
     initGraphFilters();
     bindEvents();
     initExamples();
-    log('Forge prete.', 'info');
+    checkBackendHealth();
+    log('QuestLang Forge pret.', 'info');
   } catch (e) {
     console.error('Init error:', e);
     log("Erreur d'initialisation: " + e.message, 'err');
   }
+}
+
+function checkBackendHealth() {
+  fetch(API + '/api/health')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.status === 'ok') {
+        log('Backend connecte. Modules: ' + d.modules.join(', '), 'ok');
+      } else {
+        log('Backend erreur: ' + d.message, 'err');
+      }
+    })
+    .catch(function(e) {
+      log('Backend inaccessible: ' + e.message + ' - Verifiez que le serveur Flask tourne.', 'err');
+    });
 }
 
 function initExamples() {
@@ -42,12 +58,13 @@ function initExamples() {
   log(names.length + ' exemples charges', 'ok');
   if (names.length > 0) {
     loadCode(EXAMPLES[names[0]], names[0] + '.ql');
+    // Set dropdown to first example
+    sel.value = names[0];
   }
 }
 
 function highlightCode(code) {
   var keywords = ['world','quest','item','npc','script','func','var','if','else','while','for','in','return','give','take','call','true','false'];
-  var types = ['int','float','bool','string','list'];
   var builtins = ['start','start_gold','win_condition','title','desc','requires','unlocks','rewards','costs','condition','value','stackable','type','location','gives_quest','xp','gold'];
 
   var lines = code.split("\n");
@@ -57,49 +74,39 @@ function highlightCode(code) {
     var placeholders = [];
     var phIndex = 0;
 
-    function addPlaceholder(content) {
+    function addPH(content) {
       var key = "___PH" + (phIndex++) + "___";
       placeholders.push({key: key, value: content});
       return key;
     }
 
+    // Comments
     text = text.replace(/(\/\/.*$)/g, function(m) {
-      return addPlaceholder('<span class="comment">' + m + '</span>');
+      return addPH('<span class="comment">' + m + '</span>');
     });
-
+    // Strings
     text = text.replace(/("(?:[^"\\]|\\.)*")/g, function(m) {
-      return addPlaceholder('<span class="str">' + m + '</span>');
+      return addPH('<span class="str">' + m + '</span>');
     });
-
-    text = text.replace(/('(?:[^'\\]|\\.)*')/g, function(m) {
-      return addPlaceholder('<span class="str">' + m + '</span>');
-    });
-
+    // Numbers
     text = text.replace(/\b(\d+\.?\d*)\b/g, function(m) {
-      return addPlaceholder('<span class="num">' + m + '</span>');
+      return addPH('<span class="num">' + m + '</span>');
     });
-
+    // Keywords
     keywords.forEach(function(kw) {
-      var re = new RegExp('\\b' + kw + '\\b', 'g');
+      var re = new RegExp('\\b(' + kw + ')\\b', 'g');
       text = text.replace(re, function(m) {
-        return addPlaceholder('<span class="kw">' + m + '</span>');
+        return addPH('<span class="kw">' + m + '</span>');
       });
     });
-
-    types.forEach(function(ty) {
-      var re = new RegExp('\\b' + ty + '\\b', 'g');
-      text = text.replace(re, function(m) {
-        return addPlaceholder('<span class="type">' + m + '</span>');
-      });
-    });
-
+    // Builtins
     builtins.forEach(function(bi) {
-      var re = new RegExp('\\b' + bi + '\\b', 'g');
+      var re = new RegExp('\\b(' + bi + ')\\b', 'g');
       text = text.replace(re, function(m) {
-        return addPlaceholder('<span class="builtin">' + m + '</span>');
+        return addPH('<span class="builtin">' + m + '</span>');
       });
     });
-
+    // Restore placeholders
     placeholders.forEach(function(ph) {
       text = text.split(ph.key).join(ph.value);
     });
@@ -140,7 +147,7 @@ function initTabs() {
       var pane = document.getElementById('view-' + target);
       if (pane) pane.classList.add('active');
       if (target === 'map' && graphNet && typeof graphNet.fit === 'function') {
-        setTimeout(function() { graphNet.fit(); }, 100);
+        setTimeout(function() { graphNet.fit(); }, 150);
       }
     });
   });
@@ -158,21 +165,18 @@ function initSplitter() {
     document.body.style.userSelect = 'none';
     e.preventDefault();
   });
-
   document.addEventListener('mousemove', function(e) {
     if (!dragging) return;
     var container = document.getElementById('workspace');
     if (!container) return;
     var rect = container.getBoundingClientRect();
     var nw = e.clientX - rect.left;
-    var minW = 260;
-    var maxW = container.offsetWidth - 280;
+    var minW = 260, maxW = container.offsetWidth - 280;
     if (nw >= minW && nw <= maxW) {
       left.style.width = nw + 'px';
       left.style.flex = 'none';
     }
   });
-
   document.addEventListener('mouseup', function() {
     if (dragging) {
       dragging = false;
@@ -192,43 +196,34 @@ function initSimControls() {
   var playBtn = document.getElementById('sim-play');
 
   if (resetBtn) resetBtn.addEventListener('click', function() {
-    simIndex = -1;
-    simPlaying = false;
+    simIndex = -1; simPlaying = false;
     if (playBtn) playBtn.textContent = 'Play';
     if (simTimer) { clearTimeout(simTimer); simTimer = null; }
     renderSim();
   });
-
   if (prevBtn) prevBtn.addEventListener('click', function() {
     if (simIndex > -1) { simIndex--; renderSim(); }
   });
-
   if (nextBtn) nextBtn.addEventListener('click', function() {
     if (simData && simData.order && simIndex < simData.order.length - 1) {
-      simIndex++;
-      renderSim();
+      simIndex++; renderSim();
     }
   });
-
   if (playBtn) playBtn.addEventListener('click', function() {
     if (simPlaying) {
-      simPlaying = false;
-      playBtn.textContent = 'Play';
+      simPlaying = false; playBtn.textContent = 'Play';
       if (simTimer) { clearTimeout(simTimer); simTimer = null; }
       return;
     }
     if (!simData || !simData.order || simData.order.length === 0) return;
-    simPlaying = true;
-    playBtn.textContent = 'Pause';
+    simPlaying = true; playBtn.textContent = 'Pause';
     function step() {
       if (!simPlaying) return;
       if (simData && simData.order && simIndex < simData.order.length - 1) {
-        simIndex++;
-        renderSim();
+        simIndex++; renderSim();
         simTimer = setTimeout(step, 800);
       } else {
-        simPlaying = false;
-        playBtn.textContent = 'Play';
+        simPlaying = false; playBtn.textContent = 'Play';
       }
     }
     step();
@@ -244,43 +239,28 @@ function initGraphFilters() {
   if (fitBtn) fitBtn.addEventListener('click', function() {
     if (graphNet && typeof graphNet.fit === 'function') graphNet.fit();
   });
-
   var exportBtn = document.getElementById('btn-export-png');
   if (exportBtn) exportBtn.addEventListener('click', exportGraphPNG);
 }
 
 function exportGraphPNG() {
-  if (!graphNet) {
-    log("Aucun graphe a exporter. Compilez d'abord.", 'warn');
-    return;
-  }
+  if (!graphNet) { log("Aucun graphe. Compilez d'abord.", 'warn'); return; }
   try {
     var canvas = document.querySelector('#map-canvas canvas');
-    if (!canvas) {
-      log("Canvas non trouve pour l'export.", 'err');
-      return;
-    }
-    var tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    var ctx = tempCanvas.getContext('2d');
+    if (!canvas) { log("Canvas non trouve.", 'err'); return; }
+    var tmp = document.createElement('canvas');
+    tmp.width = canvas.width; tmp.height = canvas.height;
+    var ctx = tmp.getContext('2d');
     ctx.fillStyle = '#0e0e18';
-    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    ctx.fillRect(0, 0, tmp.width, tmp.height);
     ctx.drawImage(canvas, 0, 0);
-    ctx.fillStyle = '#c8c8dc';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText("QuestLang Forge - Carte du Monde", 10, 25);
-    ctx.font = '12px sans-serif';
-    ctx.fillStyle = '#6a6a8a';
-    ctx.fillText('Genere le ' + new Date().toLocaleString(), 10, 45);
     var link = document.createElement('a');
-    link.download = 'questlang_map_' + (currentFileName.replace('.ql', '') || 'monde') + '.png';
-    link.href = tempCanvas.toDataURL('image/png');
+    link.download = 'questlang_map.png';
+    link.href = tmp.toDataURL('image/png');
     link.click();
-    log('Graphe exporte en PNG: ' + link.download, 'ok');
+    log('Graphe exporte.', 'ok');
   } catch (e) {
-    log("Erreur d'export PNG: " + e.message, 'err');
-    console.error('Export error:', e);
+    log("Erreur export PNG: " + e.message, 'err');
   }
 }
 
@@ -295,9 +275,7 @@ function bindEvents() {
 
   if (compileBtn) compileBtn.addEventListener('click', compile);
   if (clearBtn) clearBtn.addEventListener('click', function() {
-    loadCode('', 'Aucun');
-    clearConsole();
-    resetAll();
+    loadCode('', 'Aucun'); clearConsole(); resetAll();
   });
   if (stepBtn) stepBtn.addEventListener('click', function() {
     stepMode = !stepMode;
@@ -316,7 +294,6 @@ function bindEvents() {
       log('Charge: ' + name, 'info');
     }
   });
-
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
       var file = e.target.files[0];
@@ -326,33 +303,34 @@ function bindEvents() {
         loadCode(evt.target.result, file.name);
         log('Fichier charge: ' + file.name, 'ok');
       };
-      reader.onerror = function() {
-        log('Erreur de lecture du fichier', 'err');
-      };
       reader.readAsText(file);
     });
   }
-  if (loadBtn) {
-    loadBtn.addEventListener('click', function() {
-      if (fileInput) fileInput.click();
-    });
-  }
+  if (loadBtn) loadBtn.addEventListener('click', function() {
+    if (fileInput) fileInput.click();
+  });
+
+  // Keyboard shortcut: Ctrl+Enter to compile
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      compile();
+    }
+  });
 }
 
 async function compile() {
   if (!currentCode || !currentCode.trim()) {
-    log('Aucun code source a compiler', 'warn');
+    log('Aucun code source a compiler. Chargez un exemple.', 'warn');
     return;
   }
   setCompiling(true);
   clearConsole();
   resetAll();
-  log('Compilation en cours...', 'info');
+  log('Compilation en cours... (Ctrl+Enter pour relancer)', 'info');
 
   var controller = new AbortController();
-  var timeoutId = setTimeout(function() {
-    controller.abort();
-  }, 15000);
+  var timeoutId = setTimeout(function() { controller.abort(); }, 15000);
 
   try {
     var r = await fetch(API + '/api/compile', {
@@ -365,7 +343,7 @@ async function compile() {
 
     if (!r.ok) {
       var text = await r.text();
-      log('Erreur HTTP ' + r.status + ': ' + text.substring(0, 300), 'err');
+      log('Erreur HTTP ' + r.status + ': ' + text.substring(0, 200), 'err');
       setCompiling(false);
       return;
     }
@@ -374,8 +352,7 @@ async function compile() {
     try {
       d = await r.json();
     } catch (jsonErr) {
-      log("Reponse invalide du serveur (pas du JSON)", 'err');
-      console.error('JSON parse error:', jsonErr);
+      log("Reponse invalide du serveur (JSON parse error): " + jsonErr.message, 'err');
       setCompiling(false);
       return;
     }
@@ -386,15 +363,20 @@ async function compile() {
       return;
     }
 
-    if (stepMode && d.semantic_report && d.semantic_report.passes) {
-      handleResult(d, true);
-      await runStepByStep(d);
-    } else {
-      handleResult(d);
+    handleResult(d);
+
+    // Auto-switch to map tab if graph has nodes
+    if (d.semantic_report && d.semantic_report.quest_graph &&
+        d.semantic_report.quest_graph.nodes && d.semantic_report.quest_graph.nodes.length > 0) {
+      setTimeout(function() {
+        var mapTab = document.querySelector('.vtab[data-tab="map"]');
+        if (mapTab) mapTab.click();
+      }, 300);
     }
+
   } catch (e) {
     if (e.name === 'AbortError') {
-      log('Erreur: Timeout - le serveur met trop de temps a repondre (>15s)', 'err');
+      log('Timeout: le serveur ne repond pas (>15s). Verifiez que Flask tourne.', 'err');
     } else {
       log('Erreur reseau: ' + e.message, 'err');
     }
@@ -405,65 +387,37 @@ async function compile() {
   }
 }
 
-async function runStepByStep(d) {
-  var passes = d.semantic_report.passes;
-  for (var i = 0; i < passes.length; i++) {
-    log('Passe ' + (i + 1) + ' (' + passes[i].name + ')...', 'info');
-    highlightPass(i + 1, passes[i]);
-    await sleep(700);
-  }
-  log('Analyse semantique terminee', 'ok');
-}
-
-function sleep(ms) {
-  return new Promise(function(r) { setTimeout(r, ms); });
-}
-
-function highlightPass(num, passData) {
-  var card = document.getElementById('pass-' + num);
-  if (!card) return;
-  var b = card.querySelector('.pass-badge');
-  if (b) { b.className = 'pass-badge run'; b.textContent = '...'; }
-  card.style.borderColor = '#c9a84c';
-  setTimeout(function() {
-    card.style.borderColor = '';
-    if (!passData) return;
-    if (passData.status === 'ok') { b.className = 'pass-badge ok'; b.textContent = 'OK'; }
-    else if (passData.status === 'err' || passData.status === 'error') { b.className = 'pass-badge err'; b.textContent = 'ERR'; }
-    else if (passData.status === 'warning' || passData.status === 'warn') { b.className = 'pass-badge warn'; b.textContent = 'WARN'; }
-    else { b.className = 'pass-badge pending'; b.textContent = '--'; }
-  }, 400);
-}
-
-function handleResult(d, skipAnalysis) {
-  if (!d) {
-    log('Donnees de compilation manquantes', 'err');
-    return;
-  }
+function handleResult(d) {
+  if (!d) { log('Donnees manquantes', 'err'); return; }
 
   errs = d.errors || [];
   warns = d.warnings || [];
 
   var statusDot = document.getElementById('status-dot');
+
   if (d.success) {
-    log('Compilation reussie !', 'ok');
+    log('✓ Compilation reussie ! ' + (errs.length === 0 ? 'Aucune erreur.' : ''), 'ok');
     if (statusDot) statusDot.className = 'dot ok';
   } else {
-    log('Echec: ' + errs.length + ' erreur(s), ' + warns.length + ' avertissement(s)', 'err');
+    log('✗ Echec: ' + errs.length + ' erreur(s), ' + warns.length + ' avertissement(s)', 'err');
     if (statusDot) statusDot.className = 'dot err';
   }
 
   errs.forEach(function(e) {
-    log('[' + (e.pass || 'ERR') + '] L' + (e.line || 0) + ' : ' + e.message, 'err');
+    var loc = e.line ? ' [L' + e.line + ']' : '';
+    log('[ERREUR] ' + (e.code || '') + loc + ': ' + e.message, 'err');
   });
   warns.forEach(function(w) {
-    log('[' + (w.pass || 'WARN') + '] L' + (w.line || 0) + ' : ' + w.message, 'warn');
+    var loc = w.line ? ' [L' + w.line + ']' : '';
+    log('[ALERTE] ' + (w.code || '') + loc + ': ' + w.message, 'warn');
   });
 
   if (d.compilation_details) renderCompDetails(d.compilation_details);
   if (d.semantic_report) {
-    if (!skipAnalysis) renderSemanticPasses(d.semantic_report);
-    if (d.semantic_report.quest_graph) renderMap(d.semantic_report.quest_graph);
+    renderSemanticPasses(d.semantic_report);
+    if (d.semantic_report.quest_graph) {
+      renderMap(d.semantic_report.quest_graph);
+    }
   }
   if (d.simulation) {
     simData = d.simulation;
@@ -472,13 +426,20 @@ function handleResult(d, skipAnalysis) {
     var playBtn = document.getElementById('sim-play');
     if (playBtn) playBtn.textContent = 'Play';
     renderSim();
+    log('Simulation: ' + (d.simulation.order || []).length + ' quete(s) dans l\'ordre', 'info');
   }
   renderTokens(d.tokens || []);
 
-  var astPre = document.getElementById('ast-pre');
   var irPre = document.getElementById('ir-pre');
+  if (irPre) {
+    try {
+      irPre.textContent = d.ir ? JSON.stringify(d.ir, null, 2) : '--';
+    } catch(e) {
+      irPre.textContent = String(d.ir);
+    }
+  }
+  var astPre = document.getElementById('ast-pre');
   if (astPre) astPre.textContent = d.ast ? JSON.stringify(d.ast, null, 2) : '--';
-  if (irPre) irPre.textContent = d.ir ? JSON.stringify(d.ir, null, 2) : '--';
 
   updateMetrics(d);
 }
@@ -488,15 +449,15 @@ function renderCompDetails(details) {
   details.pipeline.forEach(function(step, i) {
     var el = document.getElementById('comp-step-' + (i + 1));
     if (!el) return;
-    var status = el.querySelector('.comp-status');
-    var time = el.querySelector('.comp-time');
-    var st = step.status || 'pending';
+    var statusEl = el.querySelector('.comp-status');
+    var timeEl = el.querySelector('.comp-time');
+    var st = step.status || 'ok';
     el.className = 'comp-step ' + (st === 'ok' ? 'ok' : st === 'err' ? 'err' : 'run');
-    if (status) {
-      status.className = 'comp-status ' + st;
-      status.textContent = st === 'ok' ? 'OK' : st === 'err' ? 'ERR' : '...';
+    if (statusEl) {
+      statusEl.className = 'comp-status ' + st;
+      statusEl.textContent = st === 'ok' ? 'OK' : st === 'err' ? 'ERR' : '...';
     }
-    if (time) time.textContent = step.time || '';
+    if (timeEl) timeEl.textContent = step.time || '';
   });
 
   var content = document.getElementById('comp-detail-content');
@@ -515,34 +476,32 @@ function renderSemanticPasses(report) {
     var card = document.getElementById('pass-' + (i + 1));
     if (!card) return;
     var badge = card.querySelector('.pass-badge');
-    var metrics = document.getElementById('pass-metrics-' + (i + 1));
-    var errors = document.getElementById('pass-errors-' + (i + 1));
+    var metricsEl = document.getElementById('pass-metrics-' + (i + 1));
+    var errorsEl = document.getElementById('pass-errors-' + (i + 1));
 
     if (badge) {
-      var st = p.status || 'pending';
+      var st = p.status || 'ok';
       if (st === 'ok') { badge.className = 'pass-badge ok'; badge.textContent = 'OK'; }
       else if (st === 'err' || st === 'error') { badge.className = 'pass-badge err'; badge.textContent = 'ERR'; }
       else if (st === 'warning' || st === 'warn') { badge.className = 'pass-badge warn'; badge.textContent = 'WARN'; }
       else { badge.className = 'pass-badge pending'; badge.textContent = '--'; }
     }
 
-    if (metrics) {
-      metrics.innerHTML = '';
-      if (p.metrics) {
-        var txt = Object.entries(p.metrics).map(function(kv) { return kv[0] + ': ' + kv[1]; }).join(' | ');
-        metrics.textContent = txt;
-      }
+    if (metricsEl && p.metrics) {
+      var txt = Object.entries(p.metrics).map(function(kv) { return kv[0] + ': ' + kv[1]; }).join(' | ');
+      metricsEl.textContent = txt;
     }
 
-    if (errors) {
-      errors.innerHTML = '';
+    if (errorsEl) {
+      errorsEl.innerHTML = '';
       if (p.errors && p.errors.length) {
         p.errors.forEach(function(err) {
           var div = document.createElement('div');
           var sev = err.severity || 'error';
           div.className = (sev === 'error' || sev === 'err') ? 'e-item' : 'w-item';
-          div.textContent = (err.line ? 'L' + err.line + ': ' : '') + err.message;
-          errors.appendChild(div);
+          var loc = err.line ? 'L' + err.line + ': ' : '';
+          div.textContent = loc + (err.message || '');
+          errorsEl.appendChild(div);
         });
       }
     }
@@ -550,74 +509,109 @@ function renderSemanticPasses(report) {
 }
 
 function renderMap(graph) {
-  if (!graph || !graph.nodes) {
-    log('Graphe vide, rien a afficher.', 'warn');
+  var mapCanvas = document.getElementById('map-canvas');
+  if (!mapCanvas) { log('Conteneur #map-canvas introuvable.', 'err'); return; }
+
+  // Clear previous
+  if (graphNet) {
+    try { graphNet.destroy(); } catch(e) {}
+    graphNet = null; graphDat = null;
+  }
+  mapCanvas.innerHTML = '';
+
+  if (!graph || !graph.nodes || graph.nodes.length === 0) {
+    mapCanvas.innerHTML = '<div style="padding:40px;text-align:center;color:#444460;font-size:14px;">Aucun noeud a afficher.<br>Compilez un fichier .ql avec des quetes.</div>';
+    log('Graphe vide.', 'warn');
     return;
   }
+
+  // Check vis.js availability
   if (typeof vis === 'undefined' || !vis.Network) {
-    log("ERREUR: vis.js n'est pas charge. La carte ne peut pas s'afficher.", 'err');
+    log("ERREUR: vis.js non charge. Chargement depuis CDN...", 'warn');
+    var script = document.createElement('script');
+    script.src = 'https://unpkg.com/vis-network/standalone/umd/vis-network.min.js';
+    script.onload = function() {
+      log('vis.js charge depuis CDN, reaffichage...', 'ok');
+      renderMap(graph);
+    };
+    script.onerror = function() {
+      mapCanvas.innerHTML = '<div style="padding:40px;text-align:center;color:#c44;">Impossible de charger vis.js.<br>Verifiez votre connexion internet.</div>';
+      log("vis.js CDN inaccessible.", 'err');
+    };
+    document.head.appendChild(script);
     return;
   }
+
   try {
     edgeCounter = 0;
+    var typeColors = { quest: '#9b59b6', item: '#e67e22', npc: '#1abc9c' };
+    var typeShapes = { quest: 'box', item: 'diamond', npc: 'dot' };
+
     var nodesArr = graph.nodes.map(function(n) {
-      var colors = { quest: '#9b59b6', item: '#e67e22', npc: '#1abc9c' };
-      var base = colors[n.type] || '#4a9eff';
+      var base = typeColors[n.type] || '#4a9eff';
       return {
         id: n.id,
-        label: n.label || n.id,
-        color: { background: base, border: base },
-        shape: n.type === 'quest' ? 'box' : n.type === 'item' ? 'diamond' : 'dot',
-        font: { color: '#c8c8dc', size: 13 },
-        borderWidth: 2
+        label: (n.label || n.id).substring(0, 20),
+        color: { background: base, border: base, highlight: { background: base, border: '#fff' }, hover: { background: base, border: '#fff' } },
+        shape: typeShapes[n.type] || 'box',
+        font: { color: '#ffffff', size: 12, face: 'Segoe UI, sans-serif' },
+        borderWidth: 2,
+        type: n.type
       };
     });
-    var edgesArr = (graph.edges || []).map(function(e) {
+
+    var edgesArr = graph.edges.map(function(e) {
       edgeCounter++;
       return {
         id: 'edge-' + edgeCounter,
         from: e.from,
         to: e.to,
         label: e.type || '',
-        color: { color: e.color || '#4a9eff' },
-        arrows: 'to',
-        font: { color: '#6a6a8a', size: 10 },
-        dashes: e.dashes || false
+        color: { color: e.color || '#4a9eff', opacity: 0.8 },
+        arrows: { to: { enabled: true, scaleFactor: 0.8 } },
+        font: { color: '#8a8aaa', size: 9 },
+        dashes: e.dashes || false,
+        smooth: { type: 'curvedCW', roundness: 0.2 }
       };
     });
-
-    if (graphNet) {
-      try { graphNet.destroy(); } catch(e) {}
-      graphNet = null;
-    }
-
-    var container = document.getElementById('map-canvas');
-    if (!container) {
-      log('Conteneur #map-canvas introuvable.', 'err');
-      return;
-    }
 
     var nodes = new vis.DataSet(nodesArr);
     var edges = new vis.DataSet(edgesArr);
     graphDat = { nodes: nodes, edges: edges };
 
-    graphNet = new vis.Network(container, graphDat, {
+    var options = {
       layout: {
         hierarchical: {
           direction: 'LR',
           sortMethod: 'directed',
-          levelSeparation: 190,
-          nodeSpacing: 130
+          levelSeparation: 200,
+          nodeSpacing: 120,
+          treeSpacing: 150
         }
       },
       physics: { enabled: false },
-      interaction: { hover: true, tooltipDelay: 200, zoomView: true }
+      interaction: {
+        hover: true,
+        tooltipDelay: 200,
+        zoomView: true,
+        dragView: true,
+        dragNodes: true
+      },
+      nodes: { margin: 10 },
+      edges: { smooth: { type: 'curvedCW', roundness: 0.2 } }
+    };
+
+    graphNet = new vis.Network(mapCanvas, graphDat, options);
+
+    graphNet.once('stabilized', function() {
+      graphNet.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
     });
 
     log('Carte chargee: ' + nodesArr.length + ' noeuds, ' + edgesArr.length + ' liens.', 'ok');
   } catch (e) {
-    log("Erreur d'affichage de la carte: " + e.message, 'err');
+    log("Erreur graphe: " + e.message, 'err');
     console.error('Graph error:', e);
+    mapCanvas.innerHTML = '<div style="padding:40px;text-align:center;color:#c44;">Erreur lors du rendu du graphe:<br>' + esc(e.message) + '</div>';
   }
 }
 
@@ -659,9 +653,9 @@ function renderSim() {
 
   if (!simData) {
     if (timeline) timeline.innerHTML = '<p class="comp-placeholder">Compilez pour simuler</p>';
-    var g = document.getElementById('sim-gold'); if (g) g.textContent = '0';
-    var x = document.getElementById('sim-xp'); if (x) x.textContent = '0';
-    var ic = document.getElementById('sim-item-count'); if (ic) ic.textContent = '0';
+    ['sim-gold','sim-xp','sim-item-count'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.textContent = '0';
+    });
     if (detailTitle) detailTitle.textContent = 'Selectionnez une etape';
     if (detailBody) detailBody.innerHTML = '';
     if (progressBar) progressBar.style.width = '0%';
@@ -675,8 +669,8 @@ function renderSim() {
   var goldEl = document.getElementById('sim-gold');
   var xpEl = document.getElementById('sim-xp');
   var itemEl = document.getElementById('sim-item-count');
-  if (goldEl) goldEl.textContent = (inv && inv.gold != null) ? inv.gold : 0;
-  if (xpEl) xpEl.textContent = (inv && inv.xp != null) ? inv.xp : 0;
+  if (goldEl) goldEl.textContent = (inv && inv.gold != null) ? Math.round(inv.gold) : 0;
+  if (xpEl) xpEl.textContent = (inv && inv.xp != null) ? Math.round(inv.xp) : 0;
   if (itemEl) itemEl.textContent = Object.keys((inv && inv.items) || {}).length;
   if (progressBar) {
     progressBar.style.width = order.length > 0 ? (((simIndex + 1) / order.length) * 100) + '%' : '0%';
@@ -685,16 +679,18 @@ function renderSim() {
   if (timeline) {
     timeline.innerHTML = '';
     if (order.length === 0) {
-      timeline.innerHTML = '<p class="comp-placeholder">Aucune quete dans l\'ordre</p>';
+      timeline.innerHTML = '<p class="comp-placeholder">Aucune quete</p>';
     } else {
       order.forEach(function(qid, i) {
         var step = document.createElement('div');
         var cls = 'sim-step';
-        if (i <= simIndex) cls += ' completed';
+        if (i < simIndex) cls += ' completed';
         if (i === simIndex) cls += ' active';
         step.className = cls;
         step.innerHTML = '<div class="sim-step-num">' + (i + 1) + '</div><div class="sim-step-title">' + esc(qid) + '</div>';
-        step.addEventListener('click', function() { simIndex = i; renderSim(); });
+        (function(idx) {
+          step.addEventListener('click', function() { simIndex = idx; renderSim(); });
+        })(i);
         timeline.appendChild(step);
       });
     }
@@ -702,26 +698,23 @@ function renderSim() {
 
   if (simIndex >= 0 && history[simIndex]) {
     var h = history[simIndex];
-    if (detailTitle) detailTitle.textContent = h.title || h.quest || 'Etape ' + (simIndex + 1);
-    var body = '<div style="margin-bottom:8px"><strong>Or:</strong> ' + ((h.inventory_after && h.inventory_after.gold != null) ? h.inventory_after.gold : 0);
-    body += ' | <strong>XP:</strong> ' + ((h.inventory_after && h.inventory_after.xp != null) ? h.inventory_after.xp : 0) + '</div>';
+    if (detailTitle) detailTitle.textContent = h.title || h.quest || ('Etape ' + (simIndex + 1));
+    var body = '';
+    body += '<div><strong>Or:</strong> ' + Math.round((h.inventory_after && h.inventory_after.gold != null) ? h.inventory_after.gold : 0);
+    body += '&nbsp;&nbsp;<strong>XP:</strong> ' + Math.round((h.inventory_after && h.inventory_after.xp != null) ? h.inventory_after.xp : 0) + '</div>';
     var items = (h.inventory_after && h.inventory_after.items) || {};
     var itemKeys = Object.keys(items);
     if (itemKeys.length > 0) {
       body += '<div style="margin-top:8px"><strong>Inventaire:</strong></div><ul style="margin:4px 0 0 16px">';
-      itemKeys.forEach(function(k) {
-        body += '<li>' + esc(k) + ' x' + items[k] + '</li>';
-      });
+      itemKeys.forEach(function(k) { body += '<li>' + esc(k) + ' &times;' + items[k] + '</li>'; });
       body += '</ul>';
     }
     if (detailBody) detailBody.innerHTML = body;
   } else {
-    if (detailTitle) detailTitle.textContent = 'Depart';
-    var startGold = (simData.inventory && simData.inventory.gold != null) ? simData.inventory.gold : 0;
-    var startXp = (simData.inventory && simData.inventory.xp != null) ? simData.inventory.xp : 0;
-    if (detailBody) {
-      detailBody.innerHTML = '<div><strong>Or initial:</strong> ' + startGold + '</div><div><strong>XP initial:</strong> ' + startXp + '</div>';
-    }
+    if (detailTitle) detailTitle.textContent = 'Debut';
+    var sg = (simData.inventory && simData.inventory.gold != null) ? simData.inventory.gold : 0;
+    var sx = (simData.inventory && simData.inventory.xp != null) ? simData.inventory.xp : 0;
+    if (detailBody) detailBody.innerHTML = '<div><strong>Or initial:</strong> ' + Math.round(sg) + '</div><div><strong>XP initial:</strong> ' + Math.round(sx) + '</div>';
   }
 }
 
@@ -735,20 +728,21 @@ function renderTokens(tokens) {
   }
   tokens.forEach(function(t) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + (t.line || 0) + '</td><td>' + (t.col || t.column || 0) + '</td><td class="tok-type">' + esc(t.type) + '</td><td>' + esc(String(t.value)) + '</td>';
+    tr.innerHTML = '<td>' + (t.line || 0) + '</td><td>' + (t.col || 0) + '</td><td class="tok-type">' + esc(t.type) + '</td><td>' + esc(String(t.value !== undefined ? t.value : '')) + '</td>';
     tbody.appendChild(tr);
   });
 }
 
 function updateMetrics(d) {
   var ir = (d && d.ir) || {};
-  var q = document.getElementById('m-quests'); if (q) q.textContent = countKeys(ir.quests);
-  var i = document.getElementById('m-items'); if (i) i.textContent = countKeys(ir.items);
-  var n = document.getElementById('m-npcs'); if (n) n.textContent = countKeys(ir.npcs);
-  var e = document.getElementById('m-errs'); if (e) e.textContent = errs.length;
-  var w = document.getElementById('m-warns'); if (w) w.textContent = warns.length;
-  var t = document.getElementById('m-tokens'); if (t) t.textContent = (d.tokens || []).length;
-  var tm = document.getElementById('m-time'); if (tm) tm.textContent = (d.compilation_details && d.compilation_details.total_time) ? d.compilation_details.total_time : '-';
+  var setM = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+  setM('m-quests', countKeys(ir.quests));
+  setM('m-items', countKeys(ir.items));
+  setM('m-npcs', countKeys(ir.npcs));
+  setM('m-errs', errs.length);
+  setM('m-warns', warns.length);
+  setM('m-tokens', (d.tokens || []).length);
+  if (d.compilation_details) setM('m-time', d.compilation_details.total_time || '-');
 }
 
 function countKeys(obj) {
@@ -779,11 +773,9 @@ function resetAll() {
     }
   }
   var content = document.getElementById('comp-detail-content');
-  if (content) content.innerHTML = '<span class="comp-placeholder">Chargez un exemple et compilez.</span>';
+  if (content) content.innerHTML = '<span class="comp-placeholder">Compilez pour voir les details.</span>';
 
-  simData = null;
-  simIndex = -1;
-  simPlaying = false;
+  simData = null; simIndex = -1; simPlaying = false;
   var playBtn = document.getElementById('sim-play');
   if (playBtn) playBtn.textContent = 'Play';
   if (simTimer) { clearTimeout(simTimer); simTimer = null; }
@@ -803,8 +795,7 @@ function resetAll() {
 
   if (graphNet) {
     try { graphNet.destroy(); } catch(e) {}
-    graphNet = null;
-    graphDat = null;
+    graphNet = null; graphDat = null;
   }
   var mapCanvas = document.getElementById('map-canvas');
   if (mapCanvas) mapCanvas.innerHTML = '';
@@ -819,9 +810,7 @@ function log(msg, type) {
   var line = document.createElement('div');
   line.className = 'c-line ' + (type || 'info');
   var now = new Date();
-  var t = now.getHours().toString().padStart(2, '0') + ':' +
-          now.getMinutes().toString().padStart(2, '0') + ':' +
-          now.getSeconds().toString().padStart(2, '0');
+  var t = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
   line.innerHTML = '<span class="c-time">[' + t + ']</span>' + esc(msg);
   body.appendChild(line);
   body.scrollTop = body.scrollHeight;
