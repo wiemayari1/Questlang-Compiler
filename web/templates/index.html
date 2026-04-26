@@ -1,243 +1,212 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QuestLang Forge — Compilateur RPG</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuestLang Forge — Compilateur RPG</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- vis.js charge AVANT main.js pour eviter l'erreur d'initialisation -->
+    <script src="https://unpkg.com/vis-network@9.1.2/standalone/umd/vis-network.min.js"></script>
+    <script>
+        window.QUESTLANG_EXAMPLES = {{ examples|tojson }};
+    </script>
 <base target="_blank">
 </head>
 <body>
-<div id="app">
+    <header id="top-bar">
+        <div class="brand">
+            <h1>QuestLang Forge</h1>
+            <span class="subtitle">Compilateur Mondes RPG</span>
+        </div>
+        <div class="status">
+            <span id="status-dot" class="dot"></span>
+            <span id="file-name">Aucun fichier</span>
+            <span id="file-info"></span>
+        </div>
+        <div class="toolbar">
+            <select id="example-select">
+                <option value="" disabled selected>Charger un exemple...</option>
+                {% for name in examples.keys() %}
+                <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+            <button id="btn-load" title="Charger un fichier .ql">&#128194;</button>
+            <input type="file" id="file-input" accept=".ql" style="display:none">
+            <button id="btn-compile">Compiler</button>
+            <button id="btn-clear">Effacer</button>
+            <button id="btn-step">Pas-a-pas</button>
+            <button id="btn-clr-console">Vider console</button>
+        </div>
+    </header>
 
-  <!-- TOPBAR -->
-  <header id="topbar">
-    <div id="brand">
-      <div id="logo-mark"></div>
-      <div>
-        <div id="logo-text">QuestLang Forge</div>
-        <div id="logo-sub">Compilateur Mondes RPG</div>
-      </div>
+    <div id="workspace">
+        <div id="panel-left">
+            <div class="panel-header">
+                <span id="source-file-name">sans-titre.ql</span>
+            </div>
+            <div id="source-display" class="code-editor">
+                <div class="code-line"><span class="line-num">1</span><span class="line-content token-comment">// Chargez un exemple et compilez.</span></div>
+            </div>
+        </div>
+        <div id="splitter"></div>
+        <div id="panel-right">
+            <div class="tabs">
+                <div class="vtab active" data-tab="map">Carte</div>
+                <div class="vtab" data-tab="analysis">Analyse</div>
+                <div class="vtab" data-tab="simulation">Simulation</div>
+            </div>
+
+            <div id="view-map" class="view-pane active">
+                <div class="map-toolbar">
+                    <label><input type="checkbox" id="filter-quest" checked> Quetes</label>
+                    <label><input type="checkbox" id="filter-item" checked> Items</label>
+                    <label><input type="checkbox" id="filter-npc" checked> PNJ</label>
+                    <label><input type="checkbox" id="filter-reward" checked> Recompenses</label>
+                    <button id="btn-fit">Centrer</button>
+                    <button id="btn-export-png">Export PNG</button>
+                </div>
+                <div id="map-canvas" class="map-container"></div>
+            </div>
+
+            <div id="view-analysis" class="view-pane">
+                <div class="comp-pipeline">
+                    <div id="comp-step-1" class="comp-step">
+                        <span class="comp-num">1</span>
+                        <span class="comp-name">Lexical</span>
+                        <span class="comp-status pending">--</span>
+                        <span class="comp-time"></span>
+                    </div>
+                    <div id="comp-step-2" class="comp-step">
+                        <span class="comp-num">2</span>
+                        <span class="comp-name">Syntaxique</span>
+                        <span class="comp-status pending">--</span>
+                        <span class="comp-time"></span>
+                    </div>
+                    <div id="comp-step-3" class="comp-step">
+                        <span class="comp-num">3</span>
+                        <span class="comp-name">Semantique</span>
+                        <span class="comp-status pending">--</span>
+                        <span class="comp-time"></span>
+                    </div>
+                    <div id="comp-step-4" class="comp-step">
+                        <span class="comp-num">4</span>
+                        <span class="comp-name">Generation</span>
+                        <span class="comp-status pending">--</span>
+                        <span class="comp-time"></span>
+                    </div>
+                </div>
+                <div id="comp-detail-content" class="comp-details">
+                    Compilez pour voir les details.
+                </div>
+
+                <h3>4 Passes Semantiques</h3>
+                <div class="passes-grid">
+                    <div id="pass-1" class="pass-card">
+                        <div class="pass-header">
+                            <span class="pass-num">01</span>
+                            <span class="pass-name">Symboles</span>
+                            <span class="pass-badge pending">--</span>
+                        </div>
+                        <div id="pass-metrics-1" class="pass-metrics"></div>
+                        <div id="pass-errors-1" class="pass-errors"></div>
+                    </div>
+                    <div id="pass-2" class="pass-card">
+                        <div class="pass-header">
+                            <span class="pass-num">02</span>
+                            <span class="pass-name">Accessibilite</span>
+                            <span class="pass-badge pending">--</span>
+                        </div>
+                        <div id="pass-metrics-2" class="pass-metrics"></div>
+                        <div id="pass-errors-2" class="pass-errors"></div>
+                    </div>
+                    <div id="pass-3" class="pass-card">
+                        <div class="pass-header">
+                            <span class="pass-num">03</span>
+                            <span class="pass-name">Economie</span>
+                            <span class="pass-badge pending">--</span>
+                        </div>
+                        <div id="pass-metrics-3" class="pass-metrics"></div>
+                        <div id="pass-errors-3" class="pass-errors"></div>
+                    </div>
+                    <div id="pass-4" class="pass-card">
+                        <div class="pass-header">
+                            <span class="pass-num">04</span>
+                            <span class="pass-name">Cycles</span>
+                            <span class="pass-badge pending">--</span>
+                        </div>
+                        <div id="pass-metrics-4" class="pass-metrics"></div>
+                        <div id="pass-errors-4" class="pass-errors"></div>
+                    </div>
+                </div>
+
+                <div class="analysis-panels">
+                    <div class="panel-section">
+                        <h4>Tokens</h4>
+                        <table class="token-table">
+                            <thead>
+                                <tr><th>Ligne</th><th>Col</th><th>Type</th><th>Valeur</th></tr>
+                            </thead>
+                            <tbody id="tok-body">
+                                <tr><td colspan="4">Compilez pour afficher.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="panel-section">
+                        <h4>AST</h4>
+                        <pre id="ast-pre">Compilez pour afficher.</pre>
+                    </div>
+                    <div class="panel-section">
+                        <h4>IR JSON</h4>
+                        <pre id="ir-pre">Compilez pour afficher.</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-simulation" class="view-pane">
+                <div class="sim-header">
+                    <div class="sim-stats">
+                        <div class="stat"><span class="stat-label">Or</span><span id="sim-gold" class="stat-value">0</span></div>
+                        <div class="stat"><span class="stat-label">XP</span><span id="sim-xp" class="stat-value">0</span></div>
+                        <div class="stat"><span class="stat-label">Items</span><span id="sim-item-count" class="stat-value">0</span></div>
+                    </div>
+                    <div class="sim-progress">
+                        <div id="sim-progress-bar" class="progress-bar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="sim-body">
+                    <div id="sim-timeline" class="sim-timeline">
+                        <div class="empty-state"><p>Compilez pour simuler</p></div>
+                    </div>
+                    <div class="sim-detail">
+                        <div id="sim-detail-title">Selectionnez une etape</div>
+                        <div id="sim-detail-body"></div>
+                    </div>
+                </div>
+                <div class="sim-controls">
+                    <button id="sim-reset">Reset</button>
+                    <button id="sim-prev">&lt; Prev</button>
+                    <button id="sim-play">Play</button>
+                    <button id="sim-next">Next &gt;</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div id="topbar-center">
-      <select id="example-select">
-        <option value="">-- Charger un exemple --</option>
-        {% for name in examples %}
-        <option value="{{ name }}">{{ name }}</option>
-        {% endfor %}
-      </select>
-      <span id="file-name" class="file-name">Aucun fichier</span>
+    <div id="metrics-bar">
+        <div class="metric"><span class="metric-label">Quetes</span><span id="m-quests" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">Items</span><span id="m-items" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">PNJ</span><span id="m-npcs" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">Erreurs</span><span id="m-errs" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">Alertes</span><span id="m-warns" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">Tokens</span><span id="m-tokens" class="metric-value">-</span></div>
+        <div class="metric"><span class="metric-label">Temps</span><span id="m-time" class="metric-value">-</span></div>
     </div>
 
-    <div id="topbar-actions">
-      <input type="file" id="file-input" accept=".ql" style="display:none">
-      <button id="btn-load" class="btn btn-ghost">Charger .ql</button>
-      <button id="btn-compile" class="btn btn-run">Compiler</button>
-      <button id="btn-step" class="btn btn-ghost">Pas-a-pas</button>
-      <button id="btn-clear" class="btn btn-ghost">Effacer</button>
+    <div id="console-panel">
+        <div class="console-header">Console</div>
+        <div id="console-body" class="console-body"></div>
     </div>
-  </header>
 
-  <!-- WORKSPACE -->
-  <div id="workspace">
-    <!-- Panel Gauche : Editeur -->
-    <aside id="panel-left">
-      <div class="panel-head">
-        <span class="panel-label">Source</span>
-        <span id="source-file-name" style="font-size:11px;color:#555570;margin-left:auto;">Aucun</span>
-      </div>
-      <div id="source-display">
-        <div class="src-line"><span class="src-linenum">1</span><span class="src-code" style="color:#555570">// Chargez un exemple et compilez.</span></div>
-      </div>
-      <div id="editor-footer">
-        <span id="file-info">| 0 chars | 0 lignes</span>
-        <span id="status-dot" class="dot"></span>
-      </div>
-    </aside>
-
-    <div id="splitter"></div>
-
-    <!-- Panel Droit : Onglets -->
-    <main id="panel-right">
-      <div class="panel-head" id="view-tabs">
-        <button class="vtab active" data-tab="map">Carte</button>
-        <button class="vtab" data-tab="analysis">Analyse</button>
-        <button class="vtab" data-tab="simulation">Simulation</button>
-        <button class="vtab" data-tab="tokens">Tokens</button>
-        <button class="vtab" data-tab="ast">AST</button>
-        <button class="vtab" data-tab="ir">IR</button>
-      </div>
-
-      <div id="view-body">
-        <!-- CARTE -->
-        <div id="view-map" class="view-pane active">
-          <div id="map-toolbar">
-            <label class="chk"><input type="checkbox" id="filter-quest" checked> Quetes</label>
-            <label class="chk"><input type="checkbox" id="filter-item" checked> Items</label>
-            <label class="chk"><input type="checkbox" id="filter-npc" checked> PNJ</label>
-            <label class="chk"><input type="checkbox" id="filter-reward" checked> Recompenses</label>
-            <button id="btn-fit" class="btn btn-sm">Ajuster</button>
-            <button id="btn-export-png" class="btn btn-sm">Exporter PNG</button>
-          </div>
-          <div id="map-canvas"></div>
-          <div id="map-legend">
-            <span class="leg-item"><span class="leg-box quest"></span> Quete</span>
-            <span class="leg-item"><span class="leg-box item"></span> Item</span>
-            <span class="leg-item"><span class="leg-box npc"></span> PNJ</span>
-          </div>
-        </div>
-
-        <!-- ANALYSE -->
-        <div id="view-analysis" class="view-pane">
-          <div id="comp-timeline">
-            <div class="comp-step" id="comp-step-1">
-              <div class="comp-num">1</div>
-              <div class="comp-name">Lexical</div>
-              <div class="comp-status pending">--</div>
-              <div class="comp-time"></div>
-            </div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-2">
-              <div class="comp-num">2</div>
-              <div class="comp-name">Syntaxique</div>
-              <div class="comp-status pending">--</div>
-              <div class="comp-time"></div>
-            </div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-3">
-              <div class="comp-num">3</div>
-              <div class="comp-name">Semantique</div>
-              <div class="comp-status pending">--</div>
-              <div class="comp-time"></div>
-            </div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-4">
-              <div class="comp-num">4</div>
-              <div class="comp-name">Generation</div>
-              <div class="comp-status pending">--</div>
-              <div class="comp-time"></div>
-            </div>
-          </div>
-
-          <div id="comp-details">
-            <div id="comp-detail-content" class="comp-placeholder">Chargez un exemple et compilez.</div>
-          </div>
-
-          <h3 style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#8a8aaa;margin-bottom:10px;">4 Passes Semantiques</h3>
-          <div id="passes-list">
-            <div class="pass-detail" id="pass-1">
-              <div class="pass-header">
-                <span class="pass-num">01</span>
-                <span class="pass-title">Symboles</span>
-                <span class="pass-badge pending">--</span>
-              </div>
-              <div class="pass-metrics" id="pass-metrics-1"></div>
-              <div class="pass-errors" id="pass-errors-1"></div>
-            </div>
-            <div class="pass-detail" id="pass-2">
-              <div class="pass-header">
-                <span class="pass-num">02</span>
-                <span class="pass-title">Accessibilite</span>
-                <span class="pass-badge pending">--</span>
-              </div>
-              <div class="pass-metrics" id="pass-metrics-2"></div>
-              <div class="pass-errors" id="pass-errors-2"></div>
-            </div>
-            <div class="pass-detail" id="pass-3">
-              <div class="pass-header">
-                <span class="pass-num">03</span>
-                <span class="pass-title">Economie</span>
-                <span class="pass-badge pending">--</span>
-              </div>
-              <div class="pass-metrics" id="pass-metrics-3"></div>
-              <div class="pass-errors" id="pass-errors-3"></div>
-            </div>
-            <div class="pass-detail" id="pass-4">
-              <div class="pass-header">
-                <span class="pass-num">04</span>
-                <span class="pass-title">Cycles</span>
-                <span class="pass-badge pending">--</span>
-              </div>
-              <div class="pass-metrics" id="pass-metrics-4"></div>
-              <div class="pass-errors" id="pass-errors-4"></div>
-            </div>
-          </div>
-
-          <div id="metrics-bar">
-            <div class="metric"><div class="metric-val" id="m-quests">-</div><div class="metric-lbl">Quetes</div></div>
-            <div class="metric"><div class="metric-val" id="m-items">-</div><div class="metric-lbl">Items</div></div>
-            <div class="metric"><div class="metric-val" id="m-npcs">-</div><div class="metric-lbl">PNJ</div></div>
-            <div class="metric"><div class="metric-val" id="m-errs">-</div><div class="metric-lbl">Erreurs</div></div>
-            <div class="metric"><div class="metric-val" id="m-warns">-</div><div class="metric-lbl">Alertes</div></div>
-            <div class="metric"><div class="metric-val" id="m-tokens">-</div><div class="metric-lbl">Tokens</div></div>
-            <div class="metric"><div class="metric-val" id="m-time">-</div><div class="metric-lbl">Temps</div></div>
-          </div>
-        </div>
-
-        <!-- SIMULATION -->
-        <div id="view-simulation" class="view-pane">
-          <div id="sim-header">
-            <div id="sim-inventory">
-              <div class="inv-slot"><span class="inv-label">Or</span><span class="inv-val" id="sim-gold">0</span></div>
-              <div class="inv-slot"><span class="inv-label">XP</span><span class="inv-val" id="sim-xp">0</span></div>
-              <div class="inv-slot"><span class="inv-label">Items</span><span class="inv-val" id="sim-item-count">0</span></div>
-            </div>
-            <div id="sim-controls">
-              <button id="sim-reset" class="btn btn-sm">Reset</button>
-              <button id="sim-prev" class="btn btn-sm">Precedent</button>
-              <button id="sim-play" class="btn btn-sm">Play</button>
-              <button id="sim-next" class="btn btn-sm">Suivant</button>
-            </div>
-          </div>
-          <div id="sim-progress"><div id="sim-progress-bar"></div></div>
-          <div id="sim-timeline"><p class="comp-placeholder">Compilez pour simuler</p></div>
-          <div id="sim-detail">
-            <div id="sim-detail-title">Selectionnez une etape</div>
-            <div id="sim-detail-body"></div>
-          </div>
-        </div>
-
-        <!-- TOKENS -->
-        <div id="view-tokens" class="view-pane">
-          <table id="tok-table">
-            <thead>
-              <tr><th>Ligne</th><th>Col</th><th>Type</th><th>Valeur</th></tr>
-            </thead>
-            <tbody id="tok-body">
-              <tr><td colspan="4" style="color:#555570">Compilez pour afficher.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- AST -->
-        <div id="view-ast" class="view-pane">
-          <pre id="ast-pre">Compilez pour afficher.</pre>
-        </div>
-
-        <!-- IR -->
-        <div id="view-ir" class="view-pane">
-          <pre id="ir-pre">Compilez pour afficher.</pre>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- CONSOLE -->
-  <div id="console-panel">
-    <div id="console-head">
-      <span>Console</span>
-      <button id="btn-clr-console">Vider</button>
-    </div>
-    <div id="console-body"></div>
-  </div>
-
-</div>
-
-<script>
-window.QUESTLANG_EXAMPLES = {{ examples|tojson }};
-</script>
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
