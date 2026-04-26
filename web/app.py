@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """QuestLang Forge - Interface Web Corrigee"""
-import os, sys, threading, traceback
+import os, sys, threading, traceback, importlib.util
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -11,30 +11,104 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-CORS(app)
+# CORS restreint aux origines locales uniquement
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:5000", "http://127.0.0.1:5000"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 EXAMPLES = {
- "monde_complexe": "world royaume_eldoria {\n start: quete_village;\n start_gold: 100;\n win_condition: quete_royale;\n}\n\nquest quete_village {\n title: \"Le Village en Detresse\";\n desc: \"Des gobelins attaquent le village.\";\n unlocks: quete_foret, quete_mine;\n rewards: xp 50, gold 20;\n}\n\nquest quete_foret {\n title: \"La Foret Maudite\";\n desc: \"Trouvez l'herbe medicinale.\";\n requires: quete_village;\n unlocks: quete_chateau;\n rewards: xp 100, gold 30, 1 herbe_rare;\n costs: 1 torche;\n}\n\nquest quete_mine {\n title: \"Les Profondeurs\";\n desc: \"Recuperez le minerai magique.\";\n requires: quete_village;\n unlocks: quete_forge;\n rewards: xp 120, gold 40, 1 minerai_magique;\n costs: 2 torche;\n}\n\nquest quete_forge {\n title: \"La Forge Celeste\";\n desc: \"Forgez l'epee legendaire.\";\n requires: quete_mine;\n unlocks: quete_royale;\n rewards: xp 200, gold 50, 1 epee_legendaire;\n costs: 1 minerai_magique;\n}\n\nquest quete_chateau {\n title: \"Le Chateau Oublie\";\n desc: \"Trouvez le parchemin ancien.\";\n requires: quete_foret;\n unlocks: quete_royale;\n rewards: xp 150, gold 40, 1 parchemin_ancien;\n}\n\nquest quete_royale {\n title: \"Le Couronnement\";\n desc: \"Devenez le roi d'Eldoria.\";\n requires: quete_forge, quete_chateau;\n rewards: xp 1000, gold 500, 1 couronne_royale;\n}\n\nitem herbe_rare { title: \"Herbe Rare\"; value: 30; stackable: true; type: material; }\nitem torche { title: \"Torche\"; value: 5; stackable: true; type: consumable; }\nitem minerai_magique { title: \"Minerai Magique\"; value: 100; stackable: false; type: material; }\nitem epee_legendaire { title: \"Epee Legendaire\"; value: 500; stackable: false; type: weapon; }\nitem parchemin_ancien { title: \"Parchemin Ancien\"; value: 200; stackable: false; type: artifact; }\nitem couronne_royale { title: \"Couronne Royale\"; value: 5000; stackable: false; type: artifact; }\n\nnpc chef_village { title: \"Chef du Village\"; location: village; gives_quest: quete_village; }\nnpc druide { title: \"Le Druide\"; location: foret; gives_quest: quete_foret; }\nnpc mineur_nain { title: \"Thorin le Mineur\"; location: mine; gives_quest: quete_mine; }\nnpc forgeron_maitre { title: \"Maitre Forgeron\"; location: forge; gives_quest: quete_forge; }\nnpc roi { title: \"Roi Eldor\"; location: chateau; gives_quest: quete_royale; }",
- "monde_deadlock": "world deadlock_test {\n start: q1;\n start_gold: 100;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete A\";\n desc: \"A a besoin de B.\";\n requires: q2;\n unlocks: q3;\n rewards: xp 100;\n}\n\nquest q2 {\n title: \"Quete B\";\n desc: \"B a besoin de A.\";\n requires: q1;\n rewards: xp 100;\n}\n\nquest q3 {\n title: \"Quete C\";\n desc: \"Jamais atteinte.\";\n requires: q1;\n rewards: xp 200;\n}",
- "monde_erreurs": "world monde_casse {\n start: quete_inexistante;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Depart\";\n desc: \"Quete de depart.\";\n unlocks: quete_milieu;\n rewards: xp 100, gold 25;\n}\n\nquest quete_milieu {\n title: \"Milieu\";\n desc: \"Quete du milieu.\";\n requires: quete_inexistante;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee;\n costs: 5 potion;\n}\n\nquest quete_finale {\n title: \"Fin\";\n desc: \"Quete finale.\";\n requires: quete_milieu;\n rewards: xp 500;\n}\n\nquest quete_orpheline {\n title: \"Orpheline\";\n desc: \"Jamais debloquee.\";\n rewards: xp 999;\n}\n\nitem epee { title: \"Epee\"; value: 50; stackable: false; type: weapon; }",
- "monde_inaccessible": "world inaccessible_test {\n start: q1;\n start_gold: 50;\n win_condition: q2;\n}\n\nquest q1 {\n title: \"Accessible\";\n desc: \"Celle-ci est OK.\";\n unlocks: q2;\n rewards: xp 100, gold 25;\n}\n\nquest q2 {\n title: \"Victoire\";\n desc: \"Condition de victoire.\";\n requires: q1;\n rewards: xp 500;\n}\n\nquest q3 {\n title: \"Oubliee\";\n desc: \"Personne ne debloque cette quete.\";\n rewards: xp 1000, gold 999;\n}",
- "monde_inflation": "world inflation_test {\n start: q1;\n start_gold: 10;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete d'Or\";\n desc: \"Trop d'or injecte.\";\n unlocks: q2;\n rewards: gold 10000, xp 50;\n}\n\nquest q2 {\n title: \"Milieu\";\n desc: \"Transition.\";\n requires: q1;\n unlocks: q3;\n rewards: gold 5000, xp 50;\n}\n\nquest q3 {\n title: \"Fin\";\n desc: \"Victoire.\";\n requires: q2;\n rewards: xp 100;\n}",
- "monde_valdris": "world valdris {\n start: quete_depart;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Le Reveil\";\n desc: \"Vous vous reveillez dans un village detruit.\";\n unlocks: quete_forgeron;\n rewards: xp 100, gold 25;\n\n script {\n var bonus = 10;\n if (bonus > 5) {\n give xp bonus;\n }\n }\n}\n\nquest quete_forgeron {\n title: \"L'Appel du Fer\";\n desc: \"Le forgeron a besoin de minerai.\";\n requires: quete_depart;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee_rouillee;\n costs: 2 minerai;\n}\n\nquest quete_finale {\n title: \"Le Dernier Combat\";\n desc: \"Affrontez le dragon.\";\n requires: quete_forgeron;\n rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n title: \"Epee Rouillee\";\n value: 25;\n stackable: false;\n type: weapon;\n}\n\nitem minerai {\n title: \"Minerai de Fer\";\n value: 5;\n stackable: true;\n type: material;\n}\n\nitem ame_dragon {\n title: \"Ame du Dragon\";\n value: 1000;\n stackable: false;\n type: artifact;\n}\n\nnpc forgeron_gorak {\n title: \"Gorak le Forgeron\";\n location: forge_centrale;\n gives_quest: quete_forgeron;\n}"
+    "monde_complexe": "world royaume_eldoria {\n start: quete_village;\n start_gold: 100;\n win_condition: quete_royale;\n}\n\nquest quete_village {\n title: \"Le Village en Detresse\";\n desc: \"Des gobelins attaquent le village.\";\n unlocks: quete_foret, quete_mine;\n rewards: xp 50, gold 20;\n}\n\nquest quete_foret {\n title: \"La Foret Maudite\";\n desc: \"Trouvez l'herbe medicinale.\";\n requires: quete_village;\n unlocks: quete_chateau;\n rewards: xp 100, gold 30, 1 herbe_rare;\n costs: 1 torche;\n}\n\nquest quete_mine {\n title: \"Les Profondeurs\";\n desc: \"Recuperez le minerai magique.\";\n requires: quete_village;\n unlocks: quete_forge;\n rewards: xp 120, gold 40, 1 minerai_magique;\n costs: 2 torche;\n}\n\nquest quete_forge {\n title: \"La Forge Celeste\";\n desc: \"Forgez l'epee legendaire.\";\n requires: quete_mine;\n unlocks: quete_royale;\n rewards: xp 200, gold 50, 1 epee_legendaire;\n costs: 1 minerai_magique;\n}\n\nquest quete_chateau {\n title: \"Le Chateau Oublie\";\n desc: \"Trouvez le parchemin ancien.\";\n requires: quete_foret;\n unlocks: quete_royale;\n rewards: xp 150, gold 40, 1 parchemin_ancien;\n}\n\nquest quete_royale {\n title: \"Le Couronnement\";\n desc: \"Devenez le roi d'Eldoria.\";\n requires: quete_forge, quete_chateau;\n rewards: xp 1000, gold 500, 1 couronne_royale;\n}\n\nitem herbe_rare { title: \"Herbe Rare\"; value: 30; stackable: true; type: material; }\nitem torche { title: \"Torche\"; value: 5; stackable: true; type: consumable; }\nitem minerai_magique { title: \"Minerai Magique\"; value: 100; stackable: false; type: material; }\nitem epee_legendaire { title: \"Epee Legendaire\"; value: 500; stackable: false; type: weapon; }\nitem parchemin_ancien { title: \"Parchemin Ancien\"; value: 200; stackable: false; type: artifact; }\nitem couronne_royale { title: \"Couronne Royale\"; value: 5000; stackable: false; type: artifact; }\n\nnpc chef_village { title: \"Chef du Village\"; location: village; gives_quest: quete_village; }\nnpc druide { title: \"Le Druide\"; location: foret; gives_quest: quete_foret; }\nnpc mineur_nain { title: \"Thorin le Mineur\"; location: mine; gives_quest: quete_mine; }\nnpc forgeron_maitre { title: \"Maitre Forgeron\"; location: forge; gives_quest: quete_forge; }\nnpc roi { title: \"Roi Eldor\"; location: chateau; gives_quest: quete_royale; }",
+    "monde_deadlock": "world deadlock_test {\n start: q1;\n start_gold: 100;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete A\";\n desc: \"A a besoin de B.\";\n requires: q2;\n unlocks: q3;\n rewards: xp 100;\n}\n\nquest q2 {\n title: \"Quete B\";\n desc: \"B a besoin de A.\";\n requires: q1;\n rewards: xp 100;\n}\n\nquest q3 {\n title: \"Quete C\";\n desc: \"Jamais atteinte.\";\n requires: q1;\n rewards: xp 200;\n}",
+    "monde_erreurs": "world monde_casse {\n start: quete_inexistante;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Depart\";\n desc: \"Quete de depart.\";\n unlocks: quete_milieu;\n rewards: xp 100, gold 25;\n}\n\nquest quete_milieu {\n title: \"Milieu\";\n desc: \"Quete du milieu.\";\n requires: quete_inexistante;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee;\n costs: 5 potion;\n}\n\nquest quete_finale {\n title: \"Fin\";\n desc: \"Quete finale.\";\n requires: quete_milieu;\n rewards: xp 500;\n}\n\nquest quete_orpheline {\n title: \"Orpheline\";\n desc: \"Jamais debloquee.\";\n rewards: xp 999;\n}\n\nitem epee { title: \"Epee\"; value: 50; stackable: false; type: weapon; }",
+    "monde_inaccessible": "world inaccessible_test {\n start: q1;\n start_gold: 50;\n win_condition: q2;\n}\n\nquest q1 {\n title: \"Accessible\";\n desc: \"Celle-ci est OK.\";\n unlocks: q2;\n rewards: xp 100, gold 25;\n}\n\nquest q2 {\n title: \"Victoire\";\n desc: \"Condition de victoire.\";\n requires: q1;\n rewards: xp 500;\n}\n\nquest q3 {\n title: \"Oubliee\";\n desc: \"Personne ne debloque cette quete.\";\n rewards: xp 1000, gold 999;\n}",
+    "monde_inflation": "world inflation_test {\n start: q1;\n start_gold: 10;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete d'Or\";\n desc: \"Trop d'or injecte.\";\n unlocks: q2;\n rewards: gold 10000, xp 50;\n}\n\nquest q2 {\n title: \"Milieu\";\n desc: \"Transition.\";\n requires: q1;\n unlocks: q3;\n rewards: gold 5000, xp 50;\n}\n\nquest q3 {\n title: \"Fin\";\n desc: \"Victoire.\";\n requires: q2;\n rewards: xp 100;\n}",
+    "monde_valdris": "world valdris {\n start: quete_depart;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Le Reveil\";\n desc: \"Vous vous reveillez dans un village detruit.\";\n unlocks: quete_forgeron;\n rewards: xp 100, gold 25;\n\n script {\n var bonus = 10;\n if (bonus > 5) {\n give xp bonus;\n }\n }\n}\n\nquest quete_forgeron {\n title: \"L'Appel du Fer\";\n desc: \"Le forgeron a besoin de minerai.\";\n requires: quete_depart;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee_rouillee;\n costs: 2 minerai;\n}\n\nquest quete_finale {\n title: \"Le Dernier Combat\";\n desc: \"Affrontez le dragon.\";\n requires: quete_forgeron;\n rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n title: \"Epee Rouillee\";\n value: 25;\n stackable: false;\n type: weapon;\n}\n\nitem minerai {\n title: \"Minerai de Fer\";\n value: 5;\n stackable: true;\n type: material;\n}\n\nitem ame_dragon {\n title: \"Ame du Dragon\";\n value: 1000;\n stackable: false;\n type: artifact;\n}\n\nnpc forgeron_gorak {\n title: \"Gorak le Forgeron\";\n location: forge_centrale;\n gives_quest: quete_forgeron;\n}"
 }
 
+
 def get_modules():
+    """Charge les modules src/ via importlib (robuste, pas besoin de __init__.py)."""
     try:
-        from src.lexer import Lexer
-        from src.parser import Parser
-        from src.semantic import SemanticAnalyzer
-        from src.codegen import CodeGenerator
-        return {'lexer': Lexer, 'parser': Parser, 'semantic': SemanticAnalyzer, 'codegen': CodeGenerator}
+        root = Path(__file__).parent.parent
+        modules = {}
+        for name, path in [
+            ('lexer', root / 'src' / 'lexer.py'),
+            ('parser', root / 'src' / 'parser.py'),
+            ('semantic', root / 'src' / 'semantic.py'),
+            ('codegen', root / 'src' / 'codegen.py'),
+        ]:
+            if not path.exists():
+                return {"error": f"Fichier manquant: {path}", "traceback": ""}
+            spec = importlib.util.spec_from_file_location(name, path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            modules[name] = mod
+        return {
+            'lexer': modules['lexer'].Lexer,
+            'parser': modules['parser'].Parser,
+            'semantic': modules['semantic'].SemanticAnalyzer,
+            'codegen': modules['codegen'].CodeGenerator,
+        }
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}
+
 
 @app.route("/")
 def index():
     return render_template("index.html", examples=EXAMPLES)
+
+
+@app.route("/api/health")
+def health():
+    mods = get_modules()
+    if isinstance(mods, dict) and "error" in mods:
+        return jsonify({"status": "error", "message": mods["error"]}), 500
+    return jsonify({
+        "status": "ok",
+        "modules": ["lexer", "parser", "semantic", "codegen"]
+    })
+
+
+# --- Gestionnaires d'erreurs globaux ---
+
+@app.errorhandler(404)
+def not_found(e):
+    if request.path.startswith('/api/'):
+        return jsonify({"success": False, "error": "Route non trouvee", "path": request.path}), 404
+    return render_template("index.html", examples=EXAMPLES), 404
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    tb = traceback.format_exc()
+    if request.path.startswith('/api/'):
+        return jsonify({
+            "success": False,
+            "error": "Erreur interne du serveur",
+            "message": str(e),
+            "traceback": tb
+        }), 500
+    return "Erreur interne", 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    tb = traceback.format_exc()
+    if request.path.startswith('/api/'):
+        return jsonify({
+            "success": False,
+            "error": type(e).__name__,
+            "message": str(e),
+            "traceback": tb
+        }), 500
+    raise e
+
+
+# --- Helpers ---
 
 def _normalize_quests(ir):
     raw = ir.get("quests") if isinstance(ir, dict) else None
@@ -45,6 +119,7 @@ def _normalize_quests(ir):
     if isinstance(raw, dict):
         return list(raw.values())
     return []
+
 
 def _normalize_entities(ir, key):
     if not isinstance(ir, dict):
@@ -58,6 +133,7 @@ def _normalize_entities(ir, key):
         return list(raw.values())
     return []
 
+
 def _extract_title(entity, fallback):
     if not isinstance(entity, dict):
         return fallback
@@ -67,6 +143,7 @@ def _extract_title(entity, fallback):
     if isinstance(title, str):
         return title
     return str(title)
+
 
 def _error_to_dict(entry, severity="error"):
     if isinstance(entry, dict):
@@ -89,6 +166,7 @@ def _error_to_dict(entry, severity="error"):
     if hasattr(entry, 'code'):
         result["code"] = entry.code
     return result
+
 
 def compute_simulation(ir, ast):
     if not ir or not ast:
@@ -141,10 +219,10 @@ def compute_simulation(ir, ast):
         current = queue.popleft()
         if current not in order:
             order.append(current)
-            for neighbor in graph.get(current, []):
-                in_degree[neighbor] -= 1
-                if in_degree.get(neighbor, 0) <= 0 and neighbor not in order:
-                    queue.append(neighbor)
+        for neighbor in graph.get(current, []):
+            in_degree[neighbor] -= 1
+            if in_degree.get(neighbor, 0) <= 0 and neighbor not in order:
+                queue.append(neighbor)
     for qid in quest_map:
         if qid not in order:
             order.append(qid)
@@ -160,6 +238,7 @@ def compute_simulation(ir, ast):
     if isinstance(world, dict):
         wc = world.get("win_condition", "")
         win_condition = wc if isinstance(wc, str) else ""
+
     def eval_expr(expr):
         if isinstance(expr, (int, float)):
             return expr
@@ -179,6 +258,7 @@ def compute_simulation(ir, ast):
             if "call" in expr:
                 return 0
         return 0
+
     for qid in order:
         q = quest_map.get(qid)
         if not q:
@@ -235,6 +315,7 @@ def compute_simulation(ir, ast):
         "history": history,
         "win_reached": win_reached
     }
+
 
 def build_quest_graph(ast, ir):
     nodes = []
@@ -293,6 +374,7 @@ def build_quest_graph(ast, ir):
                 edges.append({"from": nid, "to": g, "type": "gives", "dashes": False, "color": "#1abc9c"})
     return {"nodes": nodes, "edges": edges}
 
+
 def build_passes_report(report):
     passes = [
         {"name": "Symboles", "status": "ok", "errors": [], "details": "", "metrics": {}},
@@ -338,6 +420,7 @@ def build_passes_report(report):
         p["metrics"] = {"errors": err_count, "warnings": warn_count}
     return passes
 
+
 def count_ast_nodes(node, _visited=None):
     if node is None:
         return 0
@@ -364,16 +447,23 @@ def count_ast_nodes(node, _visited=None):
             count += count_ast_nodes(v, _visited)
     return count
 
+
 class CompilationTimeout(Exception):
     pass
 
+
 def compile_with_timeout(source, step_mode, timeout_sec=8):
     result = {"done": False, "data": None, "error": None}
+
     def target():
         try:
             mods = get_modules()
             if isinstance(mods, dict) and "error" in mods:
-                result["error"] = {"type": "import", "msg": mods['error'], "traceback": mods.get('traceback', '')}
+                result["error"] = {
+                    "type": "import",
+                    "msg": mods['error'],
+                    "traceback": mods.get('traceback', '')
+                }
                 result["done"] = True
                 return
             lexer = mods['lexer'](source)
@@ -396,8 +486,13 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
             }
             result["done"] = True
         except Exception as e:
-            result["error"] = {"type": "runtime", "msg": str(e), "traceback": traceback.format_exc()}
+            result["error"] = {
+                "type": type(e).__name__,
+                "msg": str(e),
+                "traceback": traceback.format_exc()
+            }
             result["done"] = True
+
     thread = threading.Thread(target=target)
     thread.daemon = True
     thread.start()
@@ -405,8 +500,13 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
     if not result["done"]:
         raise CompilationTimeout("La compilation a depasse le delai de {} secondes".format(timeout_sec))
     if result["error"]:
-        raise Exception(result["error"]["msg"])
+        err = result["error"]
+        exc = type(err["type"], (Exception,), {})(err["msg"])
+        exc.traceback = err.get("traceback", "")
+        exc.error_type = err["type"]
+        raise exc
     return result["data"]
+
 
 @app.route("/api/compile", methods=["POST"])
 def compile_code():
@@ -497,17 +597,20 @@ def compile_code():
             "compilation_details": None
         })
     except Exception as e:
-        tb = traceback.format_exc()
+        tb = getattr(e, 'traceback', traceback.format_exc())
+        err_type = getattr(e, 'error_type', type(e).__name__)
         return jsonify({
             "success": False,
-            "errors": [{"message": str(e), "line": 0, "col": 0, "severity": "error"}],
+            "errors": [{"message": str(e), "line": 0, "col": 0, "severity": "error", "code": err_type}],
             "warnings": [],
             "tokens": [],
             "ast": None,
             "ir": None,
             "semantic_report": None,
-            "compilation_details": None
-        })
+            "compilation_details": None,
+            "_debug": {"traceback": tb}
+        }), 500
+
 
 @app.route("/api/examples")
 def list_examples():
@@ -515,6 +618,7 @@ def list_examples():
     for name, content in EXAMPLES.items():
         result.append({"name": name, "content": content})
     return jsonify(result)
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
