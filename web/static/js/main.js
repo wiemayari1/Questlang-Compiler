@@ -13,7 +13,7 @@ var stepMode = false;
 var errs = [];
 var warns = [];
 var EXAMPLES = window.QUESTLANG_EXAMPLES || {};
-var edgeCounter = 0;  // compteur pour IDs uniques d'edges
+var edgeCounter = 0; // compteur pour IDs uniques d'edges
 
 function init() {
   try {
@@ -33,7 +33,7 @@ function initExamples() {
   var sel = document.getElementById('example-select');
   if (!sel) return;
   var names = Object.keys(EXAMPLES);
-  sel.innerHTML = '<option value="">-- Charger un exemple --</option>';
+  sel.innerHTML = '-- Charger un exemple --';
   names.forEach(function(name) {
     var o = document.createElement('option');
     o.value = name;
@@ -61,28 +61,28 @@ function highlightCode(code) {
     var safeLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     // colorer les commentaires
-    safeLine = safeLine.replace(/(\/\/.*$)/g, '<span class="hl-comment">$1</span>');
+    safeLine = safeLine.replace(/(\/\/.*$)/g, '<span class="comment">$1</span>');
 
     // colorer les chaines (simples ou doubles)
-    safeLine = safeLine.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="hl-string">$1</span>');
-    safeLine = safeLine.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="hl-string">$1</span>');
+    safeLine = safeLine.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="string">$1</span>');
+    safeLine = safeLine.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="string">$1</span>');
 
     // colorer les nombres
-    safeLine = safeLine.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
+    safeLine = safeLine.replace(/\b(\d+\.?\d*)\b/g, '<span class="number">$1</span>');
 
     // colorer les mots-cles (attention a ne pas remplacer dans les balises deja ajoutees)
     // On utilise une approche simple: remplacer les mots entiers
     keywords.forEach(function(kw) {
-      var re = new RegExp('\\b' + kw + '\\b', 'g');
-      safeLine = safeLine.replace(re, '<span class="hl-kw">' + kw + '</span>');
+      var re = new RegExp('\b' + kw + '\b', 'g');
+      safeLine = safeLine.replace(re, '<span class="keyword">' + kw + '</span>');
     });
     types.forEach(function(ty) {
-      var re = new RegExp('\\b' + ty + '\\b', 'g');
-      safeLine = safeLine.replace(re, '<span class="hl-type">' + ty + '</span>');
+      var re = new RegExp('\b' + ty + '\b', 'g');
+      safeLine = safeLine.replace(re, '<span class="type">' + ty + '</span>');
     });
     builtins.forEach(function(bi) {
-      var re = new RegExp('\\b' + bi + '\\b', 'g');
-      safeLine = safeLine.replace(re, '<span class="hl-bi">' + bi + '</span>');
+      var re = new RegExp('\b' + bi + '\b', 'g');
+      safeLine = safeLine.replace(re, '<span class="builtin">' + bi + '</span>');
     });
 
     html += '<div class="code-line"><span class="line-num">' + (i + 1) + '</span><span class="line-content">' + safeLine + '</span></div>';
@@ -259,9 +259,10 @@ async function compile() {
   log('Compilation...', 'info');
 
   var controller = new AbortController();
+  // CORRECTION: timeout reduit a 10 secondes au lieu de 30
   var timeoutId = setTimeout(function() {
     controller.abort();
-  }, 30000);
+  }, 10000);
 
   try {
     var r = await fetch(API + '/api/compile', {
@@ -299,7 +300,7 @@ async function compile() {
     }
   } catch (e) {
     if (e.name === 'AbortError') {
-      log('Erreur: Timeout - le serveur met trop de temps a repondre (>30s)', 'err');
+      log('Erreur: Timeout - le serveur met trop de temps a repondre (>10s)', 'err');
     } else {
       log('Erreur: ' + e.message, 'err');
     }
@@ -435,7 +436,7 @@ function renderSemanticPasses(report) {
 function renderMap(graph) {
   if (!graph || !graph.nodes) return;
   try {
-    edgeCounter = 0;  // reset compteur
+    edgeCounter = 0; // reset compteur
     var nodesArr = graph.nodes.map(function(n) {
       var colors = { quest: '#9b59b6', item: '#e67e22', npc: '#1abc9c' };
       var base = colors[n.type] || '#4a9eff';
@@ -443,15 +444,15 @@ function renderMap(graph) {
     });
     var edgesArr = (graph.edges || []).map(function(e) {
       edgeCounter++;
-      return { 
-        id: 'edge-' + edgeCounter, 
-        from: e.from, 
-        to: e.to, 
-        label: e.type, 
-        color: { color: e.color || '#4a9eff' }, 
-        arrows: 'to', 
-        font: { color: '#8a8aaa', size: 10 }, 
-        dashes: e.dashes || false 
+      return {
+        id: 'edge-' + edgeCounter,
+        from: e.from,
+        to: e.to,
+        label: e.type,
+        color: { color: e.color || '#4a9eff' },
+        arrows: 'to',
+        font: { color: '#8a8aaa', size: 10 },
+        dashes: e.dashes || false
       };
     });
 
@@ -542,7 +543,7 @@ function renderSim() {
     var body = '<p>Or: ' + ((h.inventory_after && h.inventory_after.gold != null) ? h.inventory_after.gold : 0) + ' | XP: ' + ((h.inventory_after && h.inventory_after.xp != null) ? h.inventory_after.xp : 0) + '</p>';
     var items = (h.inventory_after && h.inventory_after.items) || {};
     if (Object.keys(items).length > 0) {
-      body += '<ul class="item-list">';
+      body += '<ul>';
       Object.entries(items).forEach(function(kv) { body += '<li>' + esc(kv[0]) + ' x' + kv[1] + '</li>'; });
       body += '</ul>';
     }
@@ -558,7 +559,7 @@ function renderTokens(tokens) {
   if (!tbody) return;
   tbody.innerHTML = '';
   if (!tokens.length) {
-    tbody.innerHTML = '<tr><td colspan="4">--</td></tr>';
+    tbody.innerHTML = '--';
     return;
   }
   tokens.forEach(function(t) {
