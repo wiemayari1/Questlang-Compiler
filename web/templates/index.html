@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuestLang Forge</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div id="brand">
+      <div id="logo-mark"></div>
+      <div>
+        <div id="logo-text">QuestLang Forge</div>
+        <div id="logo-sub">Compilateur de Mondes RPG</div>
+      </div>
+    </div>
+    <div id="topbar-center">
+      <select id="example-select"><option value="">-- Charger un exemple --</option></select>
+      <span id="file-name" class="file-name"></span>
+    </div>
+    <div id="topbar-actions">
+      <button id="btn-step" class="btn btn-ghost">Pas-a-pas</button>
+      <button id="btn-compile" class="btn btn-run">Compiler</button>
+      <button id="btn-clear" class="btn">Effacer</button>
+    </div>
+  </header>
+  <div id="workspace">
+    <div id="panel-left">
+      <div class="panel-head">
+        <span class="panel-label">Source</span>
+        <span id="status-dot" class="dot"></span>
+      </div>
+      <div id="source-display"></div>
+      <div id="editor-footer"><span id="file-info">Aucun fichier</span></div>
+    </div>
+    <div id="splitter"></div>
+    <div id="panel-right">
+      <div class="panel-head">
+        <div id="view-tabs">
+          <button class="vtab active" data-tab="compilation">Compilation</button>
+          <button class="vtab" data-tab="map">Carte</button>
+          <button class="vtab" data-tab="simulation">Simulation</button>
+          <button class="vtab" data-tab="tokens">Tokens</button>
+          <button class="vtab" data-tab="ast">AST</button>
+          <button class="vtab" data-tab="ir">IR</button>
+        </div>
+      </div>
+      <div id="view-body">
+        <div class="view-pane active" id="view-compilation">
+          <div id="comp-timeline">
+            <div class="comp-step" id="comp-step-1"><div class="comp-num">1</div><div class="comp-name">Lexical</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
+            <div class="comp-arrow"></div>
+            <div class="comp-step" id="comp-step-2"><div class="comp-num">2</div><div class="comp-name">Syntaxique</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
+            <div class="comp-arrow"></div>
+            <div class="comp-step" id="comp-step-3"><div class="comp-num">3</div><div class="comp-name">Semantique</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
+            <div class="comp-arrow"></div>
+            <div class="comp-step" id="comp-step-4"><div class="comp-num">4</div><div class="comp-name">Generation</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
+          </div>
+          <div id="comp-details"><div id="comp-detail-content"><p class="comp-placeholder">Chargez un exemple et compilez.</p></div></div>
+          <div id="semantic-passes">
+            <h3>4 Passes Semantiques</h3>
+            <div id="passes-list">
+              <div class="pass-detail" id="pass-1"><div class="pass-header"><span class="pass-num">01</span><span class="pass-title">Symboles</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-1"></div><div class="pass-errors" id="pass-errors-1"></div></div>
+              <div class="pass-detail" id="pass-2"><div class="pass-header"><span class="pass-num">02</span><span class="pass-title">Accessibilite</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-2"></div><div class="pass-errors" id="pass-errors-2"></div></div>
+              <div class="pass-detail" id="pass-3"><div class="pass-header"><span class="pass-num">03</span><span class="pass-title">Economie</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-3"></div><div class="pass-errors" id="pass-errors-3"></div></div>
+              <div class="pass-detail" id="pass-4"><div class="pass-header"><span class="pass-num">04</span><span class="pass-title">Cycles</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-4"></div><div class="pass-errors" id="pass-errors-4"></div></div>
+            </div>
+          </div>
+          <div id="metrics-bar">
+            <div class="metric"><div class="metric-val" id="m-quests">-</div><div class="metric-lbl">Quetes</div></div>
+            <div class="metric"><div class="metric-val" id="m-items">-</div><div class="metric-lbl">Items</div></div>
+            <div class="metric"><div class="metric-val" id="m-npcs">-</div><div class="metric-lbl">PNJ</div></div>
+            <div class="metric"><div class="metric-val" id="m-errs">-</div><div class="metric-lbl">Erreurs</div></div>
+            <div class="metric"><div class="metric-val" id="m-warns">-</div><div class="metric-lbl">Alertes</div></div>
+            <div class="metric"><div class="metric-val" id="m-tokens">-</div><div class="metric-lbl">Tokens</div></div>
+            <div class="metric"><div class="metric-val" id="m-time">-</div><div class="metric-lbl">Temps</div></div>
+          </div>
+        </div>
+        <div class="view-pane" id="view-map">
+          <div id="map-toolbar">
+            <label class="chk"><input type="checkbox" id="filter-quest" checked><span>Quetes</span></label>
+            <label class="chk"><input type="checkbox" id="filter-item" checked><span>Items</span></label>
+            <label class="chk"><input type="checkbox" id="filter-npc" checked><span>PNJ</span></label>
+            <label class="chk"><input type="checkbox" id="filter-reward" checked><span>Recompenses</span></label>
+            <button id="btn-fit" class="btn btn-sm">Centrer</button>
+          </div>
+          <div id="map-canvas"></div>
+          <div id="map-legend">
+            <div class="leg-item"><span class="leg-box quest"></span> Quete</div>
+            <div class="leg-item"><span class="leg-box item"></span> Item</div>
+            <div class="leg-item"><span class="leg-box npc"></span> PNJ</div>
+          </div>
+        </div>
+        <div class="view-pane" id="view-simulation">
+          <div id="sim-header">
+            <div id="sim-inventory">
+              <div class="inv-slot"><span class="inv-label">Or</span><span class="inv-val" id="sim-gold">0</span></div>
+              <div class="inv-slot"><span class="inv-label">XP</span><span class="inv-val" id="sim-xp">0</span></div>
+              <div class="inv-slot"><span class="inv-label">Items</span><span class="inv-val" id="sim-item-count">0</span></div>
+            </div>
+            <div id="sim-controls">
+              <button id="sim-reset" class="btn btn-sm">Reset</button>
+              <button id="sim-prev" class="btn btn-sm">&lt;</button>
+              <button id="sim-next" class="btn btn-sm">&gt;</button>
+              <button id="sim-play" class="btn btn-sm">Play</button>
+            </div>
+          </div>
+          <div id="sim-progress"><div id="sim-progress-bar"></div></div>
+          <div id="sim-timeline"></div>
+          <div id="sim-detail">
+            <div id="sim-detail-title">Selectionnez une etape</div>
+            <div id="sim-detail-body"></div>
+          </div>
+        </div>
+        <div class="view-pane" id="view-tokens">
+          <table id="tok-table"><thead><tr><th>Ligne</th><th>Col</th><th>Type</th><th>Valeur</th></tr></thead><tbody id="tok-body"></tbody></table>
+        </div>
+        <div class="view-pane" id="view-ast"><pre id="ast-pre">Compilez pour afficher.</pre></div>
+        <div class="view-pane" id="view-ir"><pre id="ir-pre">Compilez pour afficher.</pre></div>
+      </div>
+    </div>
+  </div>
+  <div id="console-panel">
+    <div id="console-head"><span>Console</span><button id="btn-clr-console">Vider</button></div>
+    <div id="console-body"></div>
+  </div>
+</div>
+<script>
+window.QUESTLANG_EXAMPLES = {"monde_complexe": "world royaume_eldoria {\n    start: quete_village;\n    start_gold: 100;\n    win_condition: quete_royale;\n}\n\nquest quete_village {\n    title: \"Le Village en Detresse\";\n    desc: \"Des gobelins attaquent le village.\";\n    unlocks: quete_foret, quete_mine;\n    rewards: xp 50, gold 20;\n}\n\nquest quete_foret {\n    title: \"La Foret Maudite\";\n    desc: \"Trouvez l'herbe medicinale.\";\n    requires: quete_village;\n    unlocks: quete_chateau;\n    rewards: xp 100, gold 30, 1 herbe_rare;\n    costs: 1 torche;\n}\n\nquest quete_mine {\n    title: \"Les Profondeurs\";\n    desc: \"Recuperez le minerai magique.\";\n    requires: quete_village;\n    unlocks: quete_forge;\n    rewards: xp 120, gold 40, 1 minerai_magique;\n    costs: 2 torche;\n}\n\nquest quete_forge {\n    title: \"La Forge Celeste\";\n    desc: \"Forgez l'epee legendaire.\";\n    requires: quete_mine;\n    unlocks: quete_royale;\n    rewards: xp 200, gold 50, 1 epee_legendaire;\n    costs: 1 minerai_magique;\n}\n\nquest quete_chateau {\n    title: \"Le Chateau Oublie\";\n    desc: \"Trouvez le parchemin ancien.\";\n    requires: quete_foret;\n    unlocks: quete_royale;\n    rewards: xp 150, gold 40, 1 parchemin_ancien;\n}\n\nquest quete_royale {\n    title: \"Le Couronnement\";\n    desc: \"Devenez le roi d'Eldoria.\";\n    requires: quete_forge, quete_chateau;\n    rewards: xp 1000, gold 500, 1 couronne_royale;\n}\n\nitem herbe_rare { title: \"Herbe Rare\"; value: 30; stackable: true; type: material; }\nitem torche { title: \"Torche\"; value: 5; stackable: true; type: consumable; }\nitem minerai_magique { title: \"Minerai Magique\"; value: 100; stackable: false; type: material; }\nitem epee_legendaire { title: \"Epee Legendaire\"; value: 500; stackable: false; type: weapon; }\nitem parchemin_ancien { title: \"Parchemin Ancien\"; value: 200; stackable: false; type: artifact; }\nitem couronne_royale { title: \"Couronne Royale\"; value: 5000; stackable: false; type: artifact; }\n\nnpc chef_village { title: \"Chef du Village\"; location: village; gives_quest: quete_village; }\nnpc druide { title: \"Le Druide\"; location: foret; gives_quest: quete_foret; }\nnpc mineur_nain { title: \"Thorin le Mineur\"; location: mine; gives_quest: quete_mine; }\nnpc forgeron_maitre { title: \"Maître Forgeron\"; location: forge; gives_quest: quete_forge; }\nnpc roi { title: \"Roi Eldor\"; location: chateau; gives_quest: quete_royale; }", "monde_deadlock": "world deadlock_test {\n    start: q1;\n    start_gold: 100;\n    win_condition: q3;\n}\n\nquest q1 {\n    title: \"Quete A\";\n    desc: \"A a besoin de B.\";\n    requires: q2;\n    unlocks: q3;\n    rewards: xp 100;\n}\n\nquest q2 {\n    title: \"Quete B\";\n    desc: \"B a besoin de A.\";\n    requires: q1;\n    rewards: xp 100;\n}\n\nquest q3 {\n    title: \"Quete C\";\n    desc: \"Jamais atteinte.\";\n    requires: q1;\n    rewards: xp 200;\n}", "monde_erreurs": "world monde_casse {\n    start: quete_inexistante;\n    start_gold: 50;\n    win_condition: quete_finale;\n}\n\nquest quete_depart {\n    title: \"Depart\";\n    desc: \"Quete de depart.\";\n    unlocks: quete_milieu;\n    rewards: xp 100, gold 25;\n}\n\nquest quete_milieu {\n    title: \"Milieu\";\n    desc: \"Quete du milieu.\";\n    requires: quete_inexistante;\n    unlocks: quete_finale;\n    rewards: xp 200, gold 50, 1 epee;\n    costs: 5 potion;\n}\n\nquest quete_finale {\n    title: \"Fin\";\n    desc: \"Quete finale.\";\n    requires: quete_milieu;\n    rewards: xp 500;\n}\n\nquest quete_orpheline {\n    title: \"Orpheline\";\n    desc: \"Jamais debloquee.\";\n    rewards: xp 999;\n}\n\nitem epee { title: \"Epee\"; value: 50; stackable: false; type: weapon; }", "monde_fonctions": "world test_fonctions {\n    start: q1;\n    start_gold: 50;\n    win_condition: q2;\n}\n\nfunc calculer_bonus(niveau) {\n    var bonus = niveau * 10;\n    if (bonus > 50) {\n        return bonus;\n    }\n    return 50;\n}\n\nfunc verifier_or(montant) {\n    if (montant >= 100) {\n        return true;\n    }\n    return false;\n}\n\nquest q1 {\n    title: \"Test de Fonctions\";\n    desc: \"Test des fonctions utilisateur.\";\n    unlocks: q2;\n    rewards: xp 100, gold 25;\n\n    script {\n        var niveau = 5;\n        var bonus = call calculer_bonus(niveau);\n        give xp bonus;\n\n        var riche = call verifier_or(bonus);\n        if (riche) {\n            give gold 10;\n        }\n    }\n}\n\nquest q2 {\n    title: \"Fin\";\n    desc: \"Victoire.\";\n    requires: q1;\n    rewards: xp 200;\n}", "monde_inaccessible": "world inaccessible_test {\n    start: q1;\n    start_gold: 50;\n    win_condition: q2;\n}\n\nquest q1 {\n    title: \"Accessible\";\n    desc: \"Celle-ci est OK.\";\n    unlocks: q2;\n    rewards: xp 100, gold 25;\n}\n\nquest q2 {\n    title: \"Victoire\";\n    desc: \"Condition de victoire.\";\n    requires: q1;\n    rewards: xp 500;\n}\n\nquest q3 {\n    title: \"Oubliee\";\n    desc: \"Personne ne debloque cette quete.\";\n    rewards: xp 1000, gold 999;\n}", "monde_inflation": "world inflation_test {\n    start: q1;\n    start_gold: 10;\n    win_condition: q3;\n}\n\nquest q1 {\n    title: \"Quete d'Or\";\n    desc: \"Trop d'or injecte.\";\n    unlocks: q2;\n    rewards: gold 10000, xp 50;\n}\n\nquest q2 {\n    title: \"Milieu\";\n    desc: \"Transition.\";\n    requires: q1;\n    unlocks: q3;\n    rewards: gold 5000, xp 50;\n}\n\nquest q3 {\n    title: \"Fin\";\n    desc: \"Victoire.\";\n    requires: q2;\n    rewards: xp 100;\n}", "monde_valdris": "world valdris {\n    start: quete_depart;\n    start_gold: 50;\n    win_condition: quete_finale;\n}\n\nquest quete_depart {\n    title: \"Le Reveil\";\n    desc: \"Vous vous reveillez dans un village detruit.\";\n    unlocks: quete_forgeron;\n    rewards: xp 100, gold 25;\n\n    script {\n        var bonus = 10;\n        if (bonus > 5) {\n            give xp bonus;\n        }\n    }\n}\n\nquest quete_forgeron {\n    title: \"L'Appel du Fer\";\n    desc: \"Le forgeron a besoin de minerai.\";\n    requires: quete_depart;\n    unlocks: quete_finale;\n    rewards: xp 200, gold 50, 1 epee_rouillee;\n    costs: 2 minerai;\n}\n\nquest quete_finale {\n    title: \"Le Dernier Combat\";\n    desc: \"Affrontez le dragon.\";\n    requires: quete_forgeron;\n    rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n    title: \"Epee Rouillee\";\n    value: 25;\n    stackable: false;\n    type: weapon;\n}\n\nitem minerai {\n    title: \"Minerai de Fer\";\n    value: 5;\n    stackable: true;\n    type: material;\n}\n\nitem ame_dragon {\n    title: \"Ame du Dragon\";\n    value: 1000;\n    stackable: false;\n    type: artifact;\n}\n\nnpc forgeron_gorak {\n    title: \"Gorak le Forgeron\";\n    location: forge_centrale;\n    gives_quest: quete_forgeron;\n}"};
+</script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
