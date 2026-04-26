@@ -59,15 +59,15 @@
  .replace(/\b\d+\.?\d*\b/g, '<span class="number">$&</span>');
 
  keywords.forEach(function(kw) {
- var re = new RegExp("\b" + kw + "\b", "g");
+ var re = new RegExp("\\b" + kw + "\\b", "g");
  hl = hl.replace(re, '<span class="keyword">' + kw + '</span>');
  });
  types.forEach(function(ty) {
- var re = new RegExp("\b" + ty + "\b", "g");
+ var re = new RegExp("\\b" + ty + "\\b", "g");
  hl = hl.replace(re, '<span class="type">' + ty + '</span>');
  });
  builtins.forEach(function(bi) {
- var re = new RegExp("\b" + bi + "\b", "g");
+ var re = new RegExp("\\b" + bi + "\\b", "g");
  hl = hl.replace(re, '<span class="builtin">' + bi + '</span>');
  });
 
@@ -150,52 +150,38 @@
  var fitBtn = document.getElementById('btn-fit');
  if (fitBtn) fitBtn.addEventListener('click', function() { if (graphNet) graphNet.fit(); });
 
- // BONUS 4: Export PNG button
  var exportBtn = document.getElementById('btn-export-png');
  if (exportBtn) exportBtn.addEventListener('click', exportGraphPNG);
  }
 
- // BONUS 4: Export graph as PNG
  function exportGraphPNG() {
  if (!graphNet) {
  log('Aucun graphe a exporter. Compilez d\'abord.', 'warn');
  return;
  }
  try {
- // Get the canvas from vis.js network
  var canvas = document.querySelector('#map-canvas canvas');
  if (!canvas) {
  log('Canvas non trouve pour l\'export.', 'err');
  return;
  }
-
- // Create a temporary canvas with white background
  var tempCanvas = document.createElement('canvas');
  tempCanvas.width = canvas.width;
  tempCanvas.height = canvas.height;
  var ctx = tempCanvas.getContext('2d');
-
- // Fill white background
  ctx.fillStyle = '#1a1a2e';
  ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
- // Draw the original canvas on top
  ctx.drawImage(canvas, 0, 0);
-
- // Add title
  ctx.fillStyle = '#d8d8e8';
  ctx.font = 'bold 16px sans-serif';
  ctx.fillText('QuestLang Forge - Carte du Monde', 10, 25);
  ctx.font = '12px sans-serif';
  ctx.fillStyle = '#8a8aaa';
  ctx.fillText('Genere le ' + new Date().toLocaleString(), 10, 45);
-
- // Download
  var link = document.createElement('a');
  link.download = 'questlang_map_' + (currentFileName.replace('.ql', '') || 'monde') + '.png';
  link.href = tempCanvas.toDataURL('image/png');
  link.click();
-
  log('Graphe exporte en PNG: ' + link.download, 'ok');
  } catch (e) {
  log('Erreur d\'export PNG: ' + e.message, 'err');
@@ -251,6 +237,9 @@
  }
  }
 
+ // ========================================================================
+ // CORRECTION #1: fetch avec timeout + meilleure gestion d'erreurs
+ // ========================================================================
  async function compile() {
  if (!currentCode.trim()) { log('Aucun code', 'warn'); return; }
  setCompiling(true);
@@ -258,21 +247,55 @@
  resetAll();
  log('Compilation...', 'info');
 
+ // AbortController pour timeout côté client (30s)
+ var controller = new AbortController();
+ var timeoutId = setTimeout(function() {
+ controller.abort();
+ }, 30000);
+
  try {
  var r = await fetch(API + '/api/compile', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ code: currentCode, step_mode: stepMode })
+ body: JSON.stringify({ code: currentCode, step_mode: stepMode }),
+ signal: controller.signal
  });
- var d = await r.json();
+ clearTimeout(timeoutId);
+
+ if (!r.ok) {
+ var text = await r.text();
+ log('Erreur HTTP ' + r.status + ': ' + text.substring(0, 200), 'err');
+ return;
+ }
+
+ var d;
+ try {
+ d = await r.json();
+ } catch (jsonErr) {
+ log('Reponse invalide du serveur (pas du JSON)', 'err');
+ console.error('JSON parse error:', jsonErr);
+ return;
+ }
+
+ if (!d) {
+ log('Reponse vide du serveur', 'err');
+ return;
+ }
+
  if (stepMode && d.semantic_report && d.semantic_report.passes) {
  await runStepByStep(d);
  } else {
  handleResult(d);
  }
  } catch (e) {
+ if (e.name === 'AbortError') {
+ log('Erreur: Timeout - le serveur met trop de temps a repondre (>30s)', 'err');
+ } else {
  log('Erreur: ' + e.message, 'err');
+ }
+ console.error('Compile error:', e);
  } finally {
+ clearTimeout(timeoutId);
  setCompiling(false);
  }
  }
@@ -298,14 +321,23 @@
  card.style.borderColor = '#c9a84c';
  setTimeout(function() {
  card.style.borderColor = '';
+ if (!passData) return;
  if (passData.status === 'ok') { b.className = 'pass-badge ok'; b.textContent = 'OK'; }
- else if (passData.status === 'error') { b.className = 'pass-badge err'; b.textContent = 'ERR'; }
- else if (passData.status === 'warning') { b.className = 'pass-badge warn'; b.textContent = 'WARN'; }
+ else if (passData.status === 'err' || passData.status === 'error') { b.className = 'pass-badge err'; b.textContent = 'ERR'; }
+ else if (passData.status === 'warning' || passData.status === 'warn') { b.className = 'pass-badge warn'; b.textContent = 'WARN'; }
  else { b.className = 'pass-badge pending'; b.textContent = '--'; }
  }, 400);
  }
 
+ // ========================================================================
+ // CORRECTION #2: handleResult avec vérifications défensives
+ // ========================================================================
  function handleResult(d, skipAnalysis) {
+ if (!d) {
+ log('Donnees de compilation manquantes', 'err');
+ return;
+ }
+
  errs = d.errors || [];
  warns = d.warnings || [];
 
@@ -363,8 +395,8 @@
 
  if (badge) {
  if (p.status === 'ok') { badge.className = 'pass-badge ok'; badge.textContent = 'OK'; }
- else if (p.status === 'error') { badge.className = 'pass-badge err'; badge.textContent = 'ERR'; }
- else if (p.status === 'warning') { badge.className = 'pass-badge warn'; badge.textContent = 'WARN'; }
+ else if (p.status === 'err' || p.status === 'error') { badge.className = 'pass-badge err'; badge.textContent = 'ERR'; }
+ else if (p.status === 'warning' || p.status === 'warn') { badge.className = 'pass-badge warn'; badge.textContent = 'WARN'; }
  else { badge.className = 'pass-badge pending'; badge.textContent = '--'; }
  }
 
@@ -381,7 +413,7 @@
  if (p.errors) {
  p.errors.forEach(function(err) {
  var div = document.createElement('div');
- div.className = err.severity === 'error' ? 'e-item' : 'w-item';
+ div.className = (err.severity === 'error' || err.severity === 'err') ? 'e-item' : 'w-item';
  div.textContent = (err.line ? 'L' + err.line + ': ' : '') + err.message;
  errors.appendChild(div);
  });
@@ -490,8 +522,8 @@
  var items = (h.inventory_after && h.inventory_after.items) || {};
  if (Object.keys(items).length > 0) {
  body += '<div class="item-tags">';
-Object.entries(items).forEach(function(kv) { body += '<span class="item-tag">' + esc(kv[0]) + ' x' + kv[1] + '</span>'; });
-body += '</div>';
+ Object.entries(items).forEach(function(kv) { body += '<span class="item-tag">' + esc(kv[0]) + ' x' + kv[1] + '</span>'; });
+ body += '</div>';
  }
  if (detailBody) detailBody.innerHTML = body;
  } else {
@@ -516,7 +548,7 @@ body += '</div>';
  }
 
  function updateMetrics(d) {
- var ir = d.ir || {};
+ var ir = (d && d.ir) || {};
  var q = document.getElementById('m-quests'); if (q) q.textContent = Object.keys(ir.quests || {}).length;
  var i = document.getElementById('m-items'); if (i) i.textContent = Object.keys(ir.items || {}).length;
  var n = document.getElementById('m-npcs'); if (n) n.textContent = Object.keys(ir.npcs || {}).length;

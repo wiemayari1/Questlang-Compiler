@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QuestLang Forge - Version corrigée"""
+"""QuestLang Forge - Version corrigée et robuste"""
 import os, sys
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
@@ -21,7 +21,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / 'src'))  # FIX #2: Ajouter src/ dans sys.path
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
@@ -44,34 +44,54 @@ def get_modules():
         from src.codegen import CodeGenerator
         return {'lexer': Lexer, 'parser': Parser, 'semantic': SemanticAnalyzer, 'codegen': CodeGenerator}
     except Exception as e:
-        # FIX #1: Retourner l'erreur réelle au lieu de None → mode démo
-        return {"error": str(e)}
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 @app.route("/")
 def index():
     return render_template("index.html", examples=EXAMPLES)
 
-# FIX #5: Simulation calculée dynamiquement avec tri topologique (Kahn)
+# ========================================================================
+# CORRECTION #1: compute_simulation robuste (gestion dict/list + timeout)
+# ========================================================================
+def _normalize_quests(ir):
+    """Normalise ir['quests'] en liste de dictionnaires."""
+    raw = ir.get("quests") if isinstance(ir, dict) else None
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        return list(raw.values())
+    return []
+
 def compute_simulation(ir, ast):
     """Calcule l'ordre de completion des quetes et l'evolution de l'inventaire."""
     if not ir or not ast:
         return None
 
-    world = ir.get("world", {})
-    quests = ir.get("quests", [])
+    quests = _normalize_quests(ir)
+    if not quests:
+        return None
 
-    # Construire le graphe de dépendances (requires -> quest)
+    world = ir.get("world", {}) if isinstance(ir, dict) else {}
+
+    # Construire le graphe de dépendances (unlocks)
     graph = defaultdict(list)
     in_degree = defaultdict(int)
     quest_map = {}
 
     for q in quests:
-        qid = q.get("id")
+        qid = q.get("id") if isinstance(q, dict) else None
+        if not qid:
+            continue
         quest_map[qid] = q
-        in_degree[qid] = 0
+        in_degree[qid]  # initialise à 0 via defaultdict
 
     for q in quests:
-        qid = q.get("id")
+        qid = q.get("id") if isinstance(q, dict) else None
+        if not qid:
+            continue
         unlocks = q.get("unlocks", [])
         if isinstance(unlocks, list):
             for unlocked in unlocks:
@@ -79,62 +99,71 @@ def compute_simulation(ir, ast):
                     graph[qid].append(unlocked)
                     in_degree[unlocked] += 1
 
-    # Kahn's algorithm for topological sort
-    start_quest = world.get("start", "") if isinstance(world, dict) else ""
-    queue = deque()
+    # Kahn's algorithm avec protection contre boucle infinie
+    start_quest = ""
+    if isinstance(world, dict):
+        sg = world.get("start", "")
+        start_quest = sg if isinstance(sg, str) else ""
 
-    # Start with the start quest or quests with in_degree 0
+    queue = deque()
     if start_quest and start_quest in quest_map:
         queue.append(start_quest)
     else:
-        for qid, deg in in_degree.items():
-            if deg == 0:
+        for qid in list(quest_map.keys()):
+            if in_degree.get(qid, 0) == 0:
                 queue.append(qid)
 
     order = []
-    while queue:
+    max_iter = len(quest_map) * 10  # sécurité anti-boucle infinie
+    iterations = 0
+
+    while queue and iterations < max_iter:
+        iterations += 1
         current = queue.popleft()
         if current not in order:
             order.append(current)
             for neighbor in graph.get(current, []):
                 in_degree[neighbor] -= 1
-                if in_degree[neighbor] <= 0 and neighbor not in order:
+                if in_degree.get(neighbor, 0) <= 0 and neighbor not in order:
                     queue.append(neighbor)
 
-    # Add any remaining quests (cycles or unreachable)
+    # Ajouter les quêtes restantes (inaccessibles ou cycles)
     for qid in quest_map:
         if qid not in order:
             order.append(qid)
 
-    # Simulate inventory
+    # Simulation de l'inventaire
     start_gold = 50
-    if isinstance(world, dict) and "start_gold" in world:
-        sg = world["start_gold"]
+    if isinstance(world, dict):
+        sg = world.get("start_gold", 50)
         if isinstance(sg, (int, float)):
-            start_gold = sg
+            start_gold = int(sg)
 
     inventory = {"gold": start_gold, "xp": 0, "items": {}}
     history = []
     win_reached = False
-    win_condition = world.get("win_condition", "") if isinstance(world, dict) else ""
+    win_condition = ""
+    if isinstance(world, dict):
+        wc = world.get("win_condition", "")
+        win_condition = wc if isinstance(wc, str) else ""
 
     def eval_expr(expr):
         if isinstance(expr, (int, float)):
             return expr
         if isinstance(expr, dict):
-            if "op" in expr and expr["op"] in ("+", "-", "*", "/"):
+            op = expr.get("op")
+            if op in ("+", "-", "*", "/"):
                 left = eval_expr(expr.get("left", 0))
                 right = eval_expr(expr.get("right", 0))
-                if expr["op"] == "+":
+                if op == "+":
                     return left + right
-                elif expr["op"] == "-":
+                elif op == "-":
                     return left - right
-                elif expr["op"] == "*":
+                elif op == "*":
                     return left * right
-                elif expr["op"] == "/":
+                elif op == "/":
                     return left / right if right != 0 else 0
             if "call" in expr:
-                # Simplified: return a default value for function calls
                 return 0
         return 0
 
@@ -143,7 +172,7 @@ def compute_simulation(ir, ast):
         if not q:
             continue
 
-        # Apply rewards
+        # Rewards
         rewards = q.get("rewards", [])
         if isinstance(rewards, list):
             for r in rewards:
@@ -159,7 +188,7 @@ def compute_simulation(ir, ast):
                         if item_name:
                             inventory["items"][item_name] = inventory["items"].get(item_name, 0) + qty
 
-        # Apply costs
+        # Costs
         costs = q.get("costs", [])
         if isinstance(costs, list):
             for c in costs:
@@ -175,7 +204,9 @@ def compute_simulation(ir, ast):
 
         title = q.get("title", qid)
         if isinstance(title, dict):
-            title = title.get("value", qid) if "value" in title else str(title)
+            title = title.get("value", qid)
+        elif not isinstance(title, str):
+            title = str(title)
 
         history.append({
             "quest": qid,
@@ -197,7 +228,9 @@ def compute_simulation(ir, ast):
         "win_reached": win_reached
     }
 
-# FIX #4: Graphe avec vrais labels depuis l'AST
+# ========================================================================
+# CORRECTION #2: build_quest_graph robuste
+# ========================================================================
 def build_quest_graph(ast, ir):
     """Construit le graphe des quetes avec les vrais titres."""
     nodes = []
@@ -206,42 +239,40 @@ def build_quest_graph(ast, ir):
     if not ir:
         return {"nodes": nodes, "edges": edges}
 
-    quests = ir.get("quests", [])
-    items = ir.get("items", [])
-    npcs = ir.get("npcs", [])
+    quests = _normalize_quests(ir)
+    items = _normalize_entities(ir, "items")
+    npcs = _normalize_entities(ir, "npcs")
 
-    # Extract titles from IR
     for q in quests:
-        qid = q.get("id", "")
-        title = qid
-        if isinstance(q.get("title"), dict):
-            title = q["title"].get("value", qid)
-        elif isinstance(q.get("title"), str):
-            title = q["title"]
-        nodes.append({"id": qid, "label": title, "type": "quest", "reachable": q.get("reachable", True)})
+        qid = q.get("id", "") if isinstance(q, dict) else ""
+        if not qid:
+            continue
+        title = _extract_title(q, qid)
+        nodes.append({
+            "id": qid,
+            "label": title,
+            "type": "quest",
+            "reachable": q.get("reachable", True) if isinstance(q, dict) else True
+        })
 
-        # Edges: unlocks
-        unlocks = q.get("unlocks", [])
+        unlocks = q.get("unlocks", []) if isinstance(q, dict) else []
         if isinstance(unlocks, list):
             for u in unlocks:
                 edges.append({"from": qid, "to": u, "type": "unlocks", "dashes": False})
 
-        # Edges: requires
-        requires = q.get("requires", [])
+        requires = q.get("requires", []) if isinstance(q, dict) else []
         if isinstance(requires, list):
             for r in requires:
                 edges.append({"from": r, "to": qid, "type": "requires", "dashes": True})
 
-        # Edges: rewards
-        rewards = q.get("rewards", [])
+        rewards = q.get("rewards", []) if isinstance(q, dict) else []
         if isinstance(rewards, list):
             for r in rewards:
                 if isinstance(r, dict) and r.get("type") == "item":
                     item_name = r.get("name", "")
                     edges.append({"from": qid, "to": item_name, "type": "reward", "dashes": True})
 
-        # Edges: costs
-        costs = q.get("costs", [])
+        costs = q.get("costs", []) if isinstance(q, dict) else []
         if isinstance(costs, list):
             for c in costs:
                 if isinstance(c, dict) and c.get("type") == "item":
@@ -249,31 +280,53 @@ def build_quest_graph(ast, ir):
                     edges.append({"from": qid, "to": item_name, "type": "cost", "dashes": True, "color": "#c44"})
 
     for i in items:
-        iid = i.get("id", "")
-        title = iid
-        if isinstance(i.get("title"), dict):
-            title = i["title"].get("value", iid)
-        elif isinstance(i.get("title"), str):
-            title = i["title"]
+        iid = i.get("id", "") if isinstance(i, dict) else ""
+        if not iid:
+            continue
+        title = _extract_title(i, iid)
         nodes.append({"id": iid, "label": title, "type": "item"})
 
     for n in npcs:
-        nid = n.get("id", "")
-        title = nid
-        if isinstance(n.get("title"), dict):
-            title = n["title"].get("value", nid)
-        elif isinstance(n.get("title"), str):
-            title = n["title"]
+        nid = n.get("id", "") if isinstance(n, dict) else ""
+        if not nid:
+            continue
+        title = _extract_title(n, nid)
         nodes.append({"id": nid, "label": title, "type": "npc"})
 
-        gives = n.get("gives_quest", [])
+        gives = n.get("gives_quest", []) if isinstance(n, dict) else []
         if isinstance(gives, list):
             for g in gives:
                 edges.append({"from": nid, "to": g, "type": "gives", "dashes": False, "color": "#1abc9c"})
 
     return {"nodes": nodes, "edges": edges}
 
-# FIX #5: Passes semantiques avec erreurs réelles
+def _normalize_entities(ir, key):
+    """Normalise ir[key] en liste."""
+    if not isinstance(ir, dict):
+        return []
+    raw = ir.get(key)
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        return list(raw.values())
+    return []
+
+def _extract_title(entity, fallback):
+    """Extrait le titre d'une entité IR."""
+    if not isinstance(entity, dict):
+        return fallback
+    title = entity.get("title", fallback)
+    if isinstance(title, dict):
+        return title.get("value", fallback)
+    if isinstance(title, str):
+        return title
+    return str(title)
+
+# ========================================================================
+# CORRECTION #3: build_passes_report robuste
+# ========================================================================
 def build_passes_report(report):
     """Construit le rapport des 4 passes avec les vraies erreurs."""
     passes = [
@@ -283,10 +336,65 @@ def build_passes_report(report):
         {"name": "Cycles", "status": "ok", "errors": [], "details": "", "metrics": {}}
     ]
 
-    if not report or "passes" not in report:
+    if not report:
         return passes
 
-    # Map error codes to passes
+    # Si c'est un ErrorReporter, extraire les erreurs/warnings/infos
+    if hasattr(report, 'get_errors') and callable(report.get_errors):
+        # C'est un ErrorReporter
+        all_errors = report.get_errors()
+        all_warnings = report.get_warnings() if hasattr(report, 'get_warnings') else []
+        all_infos = report.get_infos() if hasattr(report, 'get_infos') else []
+
+        pass_map = {
+            "DUPLICATE_WORLD": 0, "DUPLICATE_QUEST": 0, "DUPLICATE_ITEM": 0, "DUPLICATE_NPC": 0,
+            "DUPLICATE_FUNC": 0, "DUPLICATE_VAR": 0, "UNDEF_START_QUEST": 0, "UNDEF_WIN_COND": 0,
+            "UNDEF_QUEST_REF": 0, "UNDEF_UNLOCK_REF": 0, "UNDEF_ITEM_REF": 0, "UNDEF_FUNC_REF": 0,
+            "UNREACHABLE_QUEST": 1, "WIN_UNREACHABLE": 1, "NO_REWARD": 1, "DEFAULT_START": 1,
+            "ITEM_DEFICIT": 2, "ITEM_SURPLUS": 2, "GOLD_INFLATION": 2, "GOLD_DEFLATION": 2,
+            "DEADLOCK_CYCLE": 3, "UNLOCK_LOOP": 3, "DEAD_ITEM": 3, "IDLE_NPC": 3
+        }
+
+        for e in all_errors:
+            code = _get_error_code(e)
+            pass_idx = pass_map.get(code, 0)
+            entry = _error_to_dict(e, "error")
+            passes[pass_idx]["errors"].append(entry)
+            passes[pass_idx]["status"] = "err"
+
+        for w in all_warnings:
+            code = _get_error_code(w)
+            pass_idx = pass_map.get(code, 0)
+            entry = _error_to_dict(w, "warning")
+            passes[pass_idx]["errors"].append(entry)
+            if passes[pass_idx]["status"] == "ok":
+                passes[pass_idx]["status"] = "warning"
+
+        for i, p in enumerate(passes):
+            err_count = len([e for e in p["errors"] if e.get("severity") == "error"])
+            warn_count = len([e for e in p["errors"] if e.get("severity") == "warning"])
+            if err_count > 0:
+                p["status"] = "err"
+                p["details"] = f"{err_count} erreur(s) detectee(s)"
+            elif warn_count > 0:
+                p["status"] = "warning"
+                p["details"] = f"{warn_count} avertissement(s)"
+            else:
+                p["details"] = "Aucun probleme detecte"
+            p["metrics"] = {"errors": err_count, "warnings": warn_count}
+
+        return passes
+
+    # Sinon, essayer l'ancien format avec passes
+    raw_passes = []
+    if isinstance(report, dict):
+        raw_passes = report.get("passes", []) or []
+    elif hasattr(report, 'passes'):
+        raw_passes = report.passes if isinstance(report.passes, list) else []
+
+    if not raw_passes:
+        return passes
+
     pass_map = {
         "DUPLICATE_WORLD": 0, "DUPLICATE_QUEST": 0, "DUPLICATE_ITEM": 0, "DUPLICATE_NPC": 0,
         "DUPLICATE_FUNC": 0, "DUPLICATE_VAR": 0, "UNDEF_START_QUEST": 0, "UNDEF_WIN_COND": 0,
@@ -296,17 +404,33 @@ def build_passes_report(report):
         "DEADLOCK_CYCLE": 3, "UNLOCK_LOOP": 3, "DEAD_ITEM": 3, "IDLE_NPC": 3
     }
 
-    for p in report.get("passes", []):
-        for e in p.get("errors", []):
-            code = e.get("code", "")
-            pass_idx = pass_map.get(code, 0)
-            passes[pass_idx]["errors"].append(e)
-            passes[pass_idx]["status"] = "err" if e.get("severity") == "error" else "warning"
+    for p in raw_passes:
+        p_errors = []
+        if isinstance(p, dict):
+            p_errors = p.get("errors", []) or []
+        elif hasattr(p, 'errors'):
+            p_errors = p.errors if isinstance(p.errors, list) else []
 
-    # Update details and metrics based on actual data
+        for e in p_errors:
+            code = ""
+            if isinstance(e, dict):
+                code = e.get("code", "")
+            elif hasattr(e, 'code'):
+                code = e.code
+            pass_idx = pass_map.get(code, 0)
+
+            severity = "error"
+            if isinstance(e, dict):
+                severity = e.get("severity", "error")
+            elif hasattr(e, 'severity'):
+                severity = e.severity
+
+            passes[pass_idx]["errors"].append(e)
+            passes[pass_idx]["status"] = "err" if severity == "error" else "warning"
+
     for i, p in enumerate(passes):
-        err_count = len([e for e in p["errors"] if e.get("severity") == "error"])
-        warn_count = len([e for e in p["errors"] if e.get("severity") == "warning"])
+        err_count = len([e for e in p["errors"] if _get_severity(e) == "error"])
+        warn_count = len([e for e in p["errors"] if _get_severity(e) == "warning"])
         if err_count > 0:
             p["status"] = "err"
             p["details"] = f"{err_count} erreur(s) detectee(s)"
@@ -319,103 +443,247 @@ def build_passes_report(report):
 
     return passes
 
+def _get_severity(entry):
+    if isinstance(entry, dict):
+        return entry.get("severity", "error")
+    if hasattr(entry, 'severity'):
+        return entry.severity
+    return "error"
+
+def _get_error_code(entry):
+    """Extrait le code d'erreur d'une entrée ErrorReporter."""
+    if isinstance(entry, dict):
+        return entry.get("code", "")
+    if hasattr(entry, 'code'):
+        return entry.code
+    return ""
+
+def _error_to_dict(entry, severity="error"):
+    """Convertit une entrée ErrorReporter en dict."""
+    if isinstance(entry, dict):
+        result = dict(entry)
+        result["severity"] = severity
+        return result
+    result = {
+        "severity": severity,
+        "message": "",
+        "line": 0,
+        "col": 0,
+        "code": ""
+    }
+    if hasattr(entry, 'message'):
+        result["message"] = entry.message
+    if hasattr(entry, 'line'):
+        result["line"] = entry.line
+    if hasattr(entry, 'column'):
+        result["col"] = entry.column
+    if hasattr(entry, 'code'):
+        result["code"] = entry.code
+    return result
+
+# ========================================================================
+# CORRECTION #4: count_ast_nodes avec protection anti-cycles
+# ========================================================================
+def count_ast_nodes(node, _visited=None):
+    """Compte le nombre de noeuds dans l'AST avec protection contre les cycles."""
+    if node is None:
+        return 0
+    if _visited is None:
+        _visited = set()
+
+    node_id = id(node)
+    if node_id in _visited:
+        return 0
+    _visited.add(node_id)
+
+    count = 1
+    attrs = ['declarations', 'statements', 'body', 'then_block', 'else_block',
+             'init_expr', 'condition', 'left', 'right', 'operand', 'call_expr',
+             'args', 'rewards', 'variables']
+    for attr in attrs:
+        val = getattr(node, attr, None)
+        if val is None:
+            continue
+        if isinstance(val, list):
+            count += sum(count_ast_nodes(c, _visited) for c in val)
+        else:
+            count += count_ast_nodes(val, _visited)
+
+    if hasattr(node, 'properties') and isinstance(node.properties, dict):
+        for v in node.properties.values():
+            count += count_ast_nodes(v, _visited)
+
+    return count
+
+# ========================================================================
+# ROUTE /api/compile - CORRECTION #5: try/except renforcé + logs
+# ========================================================================
 @app.route("/api/compile", methods=["POST"])
 def compile_code():
-    data = request.get_json()
+    data = request.get_json() or {}
     source = data.get("code", "")
     step_mode = data.get("step_mode", False)
 
-    if not source.strip():
-        return jsonify({"success": False, "errors": [{"message": "Code source vide", "line": 0, "col": 0}],
-                        "tokens": [], "ast": None, "ir": None, "semantic_report": None, "compilation_details": None})
+    if not source or not source.strip():
+        return jsonify({
+            "success": False,
+            "errors": [{"message": "Code source vide", "line": 0, "col": 0}],
+            "tokens": [], "ast": None, "ir": None,
+            "semantic_report": None, "compilation_details": None
+        })
 
     mods = get_modules()
     if isinstance(mods, dict) and "error" in mods:
-        # FIX #1: Retourner une vraie erreur au lieu du mode démo hardcodé
         return jsonify({
             "success": False,
-            "errors": [{"message": f"Erreur d'import des modules: {mods['error']}", "line": 0, "col": 0, "severity": "error"}],
-            "warnings": [],
-            "tokens": [],
-            "ast": None,
-            "ir": None,
-            "semantic_report": None,
-            "compilation_details": None
+            "errors": [{
+                "message": f"Erreur d'import des modules: {mods['error']}",
+                "line": 0, "col": 0, "severity": "error"
+            }],
+            "warnings": [], "tokens": [], "ast": None, "ir": None,
+            "semantic_report": None, "compilation_details": None
         })
 
     try:
+        print(f"[SERVER] Début compilation, source length={len(source)}")
+
         lexer = mods['lexer'](source)
         tokens = lexer.tokenize()
+        print(f"[SERVER] Lexer OK: {len(tokens)} tokens")
+
         parser = mods['parser'](tokens)
         ast = parser.parse()
+        print(f"[SERVER] Parser OK")
 
-        # BONUS 2: Constant folding avant l'analyse semantique
+        # BONUS 2: Constant folding
         if FOLDING_AVAILABLE:
             folder = ConstantFolder()
             ast = folder.fold(ast)
+            print(f"[SERVER] Constant folding OK")
 
         semantic = mods['semantic'](ast)
         report = semantic.analyze()
+        print(f"[SERVER] Semantic OK, report type={type(report)}")
 
-        # BONUS 1: Interpreter pour executer les scripts
+        # BONUS 1: Interpreter
         interpreter_logs = []
-        if INTERPRETER_AVAILABLE and report and len(report.get('passes', [])) > 0:
-            # Verifier si pas d'erreurs critiques
-            has_critical_errors = False
-            for p in report.get('passes', []):
-                for e in p.get('errors', []):
-                    if e.get('severity') == 'error' and e.get('code') in ['DUPLICATE_QUEST', 'UNDEF_START_QUEST', 'DEADLOCK_CYCLE']:
-                        has_critical_errors = True
+        if INTERPRETER_AVAILABLE and report is not None:
+            has_critical = False
+            raw_passes = []
+            if isinstance(report, dict):
+                raw_passes = report.get('passes', []) or []
+            elif hasattr(report, 'passes'):
+                raw_passes = report.passes if isinstance(report.passes, list) else []
 
-            if not has_critical_errors:
-                interpreter = QuestLangInterpreter()
-                # Enregistrer les fonctions
-                for decl in ast.declarations:
-                    if hasattr(decl, 'node_type') and decl.node_type.name == 'FUNCTION':
-                        interpreter.register_function(decl)
+            for p in raw_passes:
+                p_errors = p.get("errors", []) if isinstance(p, dict) else (p.errors if hasattr(p, 'errors') else [])
+                for e in p_errors:
+                    sev = e.get("severity", "") if isinstance(e, dict) else (e.severity if hasattr(e, 'severity') else "")
+                    code = e.get("code", "") if isinstance(e, dict) else (e.code if hasattr(e, 'code') else "")
+                    if sev == "error" and code in ['DUPLICATE_QUEST', 'UNDEF_START_QUEST', 'DEADLOCK_CYCLE']:
+                        has_critical = True
 
-                # Definir l'inventaire initial
-                start_gold = 50
-                if ast.world and "start_gold" in ast.world.properties:
-                    sg = ast.world.properties["start_gold"]
-                    if hasattr(sg, 'value') and isinstance(sg.value, (int, float)):
-                        start_gold = sg.value
-                interpreter.set_inventory(gold=start_gold)
+            if not has_critical:
+                try:
+                    interpreter = QuestLangInterpreter()
+                    for decl in getattr(ast, 'declarations', []):
+                        if hasattr(decl, 'node_type') and getattr(decl.node_type, 'name', '') == 'FUNCTION':
+                            interpreter.register_function(decl)
 
-                # Executer les scripts de quetes
-                for decl in ast.declarations:
-                    if hasattr(decl, 'node_type') and decl.node_type.name == 'QUEST' and decl.script:
-                        interpreter.execute_script(decl.script)
+                    start_gold = 50
+                    if hasattr(ast, 'world') and ast.world and hasattr(ast.world, 'properties'):
+                        sg = ast.world.properties.get("start_gold")
+                        if hasattr(sg, 'value') and isinstance(sg.value, (int, float)):
+                            start_gold = sg.value
+                    interpreter.set_inventory(gold=start_gold)
 
-                interpreter_logs = interpreter.output_log
+                    for decl in getattr(ast, 'declarations', []):
+                        if hasattr(decl, 'node_type') and getattr(decl.node_type, 'name', '') == 'QUEST' and getattr(decl, 'script', None):
+                            interpreter.execute_script(decl.script)
+
+                    interpreter_logs = interpreter.output_log
+                except Exception as ie:
+                    print(f"[SERVER] Interpreter error (non fatal): {ie}")
 
         codegen = mods['codegen'](ast)
         ir = codegen.generate()
+        print(f"[SERVER] Codegen OK, ir type={type(ir)}")
 
+        # Extraction des erreurs/avertissements depuis ErrorReporter
         errors, warnings = [], []
-        for p in report.get('passes', []):
-            for e in p.get('errors', []):
-                entry = {"message": e.get('message', ''), "line": e.get('line', 0),
-                         "col": e.get('col', 0), "severity": e.get('severity', 'error'), "pass": p.get('name', '')}
-                (errors if entry['severity'] == 'error' else warnings).append(entry)
 
-        # Build quest graph with real labels
+        if hasattr(report, 'get_errors') and callable(report.get_errors):
+            # C'est un ErrorReporter
+            for e in report.get_errors():
+                entry = _error_to_dict(e, "error")
+                entry["pass"] = ""
+                errors.append(entry)
+            for w in report.get_warnings() if hasattr(report, 'get_warnings') else []:
+                entry = _error_to_dict(w, "warning")
+                entry["pass"] = ""
+                warnings.append(entry)
+        else:
+            # Ancien format avec passes
+            raw_passes = []
+            if isinstance(report, dict):
+                raw_passes = report.get('passes', []) or []
+            elif hasattr(report, 'passes'):
+                raw_passes = report.passes if isinstance(report.passes, list) else []
+
+            for p in raw_passes:
+                p_name = ""
+                if isinstance(p, dict):
+                    p_name = p.get('name', '')
+                    p_errors = p.get('errors', []) or []
+                elif hasattr(p, 'name'):
+                    p_name = p.name
+                    p_errors = p.errors if hasattr(p, 'errors') and isinstance(p.errors, list) else []
+                else:
+                    p_errors = []
+
+                for e in p_errors:
+                    msg = ""
+                    line = 0
+                    col = 0
+                    sev = "error"
+                    if isinstance(e, dict):
+                        msg = e.get('message', '')
+                        line = e.get('line', 0)
+                        col = e.get('col', 0)
+                        sev = e.get('severity', 'error')
+                    else:
+                        msg = str(e)
+                        if hasattr(e, 'line'): line = e.line
+                        if hasattr(e, 'col'): col = e.col
+                        if hasattr(e, 'severity'): sev = e.severity
+
+                    entry = {"message": msg, "line": line, "col": col, "severity": sev, "pass": p_name}
+                    (errors if sev == "error" else warnings).append(entry)
+
         quest_graph = build_quest_graph(ast, ir)
-
-        # Build semantic report with real passes
         passes_report = build_passes_report(report)
-
-        # Compute simulation
         simulation = compute_simulation(ir, ast)
-
-        # Count AST nodes
         ast_nodes_count = count_ast_nodes(ast)
+
+        # Construction de l'AST dict
+        ast_dict = None
+        if hasattr(ast, 'to_dict'):
+            try:
+                ast_dict = ast.to_dict()
+            except Exception as te:
+                print(f"[SERVER] ast.to_dict() failed: {te}")
+                ast_dict = {"type": "Program", "to_dict_error": str(te)}
+        else:
+            ast_dict = {"type": "Program"}
+
+        print(f"[SERVER] Compilation terminée avec succès")
 
         return jsonify({
             "success": len(errors) == 0,
-            "errors": errors, "warnings": warnings,
-            "tokens": [{"type": t.type, "value": t.value, "line": t.line, "col": t.col} for t in tokens],
-            "ast": ast.to_dict() if hasattr(ast, 'to_dict') else {"type": "Program"},
+            "errors": errors,
+            "warnings": warnings,
+            "tokens": [{"type": t.type.name, "value": t.value, "line": t.line, "col": t.column} for t in tokens],
+            "ast": ast_dict,
             "ir": ir,
             "semantic_report": {
                 "passes": passes_report,
@@ -439,52 +707,22 @@ def compile_code():
             "simulation": simulation,
             "interpreter_logs": interpreter_logs if INTERPRETER_AVAILABLE else []
         })
+
     except Exception as e:
         import traceback
+        tb = traceback.format_exc()
+        print(f"[SERVER] ERREUR COMPILATION: {e}")
+        print(tb)
         return jsonify({
             "success": False,
             "errors": [{"message": str(e), "line": 0, "col": 0, "severity": "error"}],
-            "warnings": [], "tokens": [], "ast": None, "ir": None,
-            "semantic_report": None, "compilation_details": None
+            "warnings": [],
+            "tokens": [],
+            "ast": None,
+            "ir": None,
+            "semantic_report": None,
+            "compilation_details": None
         })
-
-def count_ast_nodes(node):
-    """Compte le nombre de noeuds dans l'AST."""
-    if node is None:
-        return 0
-    count = 1
-    if hasattr(node, 'declarations') and isinstance(node.declarations, list):
-        count += sum(count_ast_nodes(c) for c in node.declarations)
-    if hasattr(node, 'statements') and isinstance(node.statements, list):
-        count += sum(count_ast_nodes(c) for c in node.statements)
-    if hasattr(node, 'body') and node.body is not None:
-        count += count_ast_nodes(node.body)
-    if hasattr(node, 'then_block') and node.then_block is not None:
-        count += count_ast_nodes(node.then_block)
-    if hasattr(node, 'else_block') and node.else_block is not None:
-        count += count_ast_nodes(node.else_block)
-    if hasattr(node, 'init_expr') and node.init_expr is not None:
-        count += count_ast_nodes(node.init_expr)
-    if hasattr(node, 'condition') and node.condition is not None:
-        count += count_ast_nodes(node.condition)
-    if hasattr(node, 'left') and node.left is not None:
-        count += count_ast_nodes(node.left)
-    if hasattr(node, 'right') and node.right is not None:
-        count += count_ast_nodes(node.right)
-    if hasattr(node, 'operand') and node.operand is not None:
-        count += count_ast_nodes(node.operand)
-    if hasattr(node, 'call_expr') and node.call_expr is not None:
-        count += count_ast_nodes(node.call_expr)
-    if hasattr(node, 'args') and isinstance(node.args, list):
-        count += sum(count_ast_nodes(a) for a in node.args)
-    if hasattr(node, 'rewards') and isinstance(node.rewards, list):
-        count += sum(count_ast_nodes(r) for r in node.rewards)
-    if hasattr(node, 'properties') and isinstance(node.properties, dict):
-        for v in node.properties.values():
-            count += count_ast_nodes(v)
-    if hasattr(node, 'variables') and isinstance(node.variables, list):
-        count += sum(count_ast_nodes(v) for v in node.variables)
-    return count
 
 @app.route("/api/examples")
 def list_examples():
