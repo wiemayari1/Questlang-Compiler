@@ -113,7 +113,6 @@ class TokenType(Enum):
     INDENT = auto()
     DEDENT = auto()
 
-
 class Token:
     """Represente un token avec son type, valeur et position."""
     def __init__(self, type_, value, line, column, filename=""):
@@ -132,7 +131,6 @@ class Token:
         if isinstance(other, Token):
             return self.type == other.type and self.value == other.value
         return False
-
 
 class Lexer:
     """
@@ -299,7 +297,7 @@ class Lexer:
         while self.peek() != '\0':
             self.skip_whitespace()
 
-            if self.peek() == '/' and self.peek(1) in '/*':
+            if self.peek() == '/' and self.peek(1) in ('/', '*'):
                 self.skip_comment()
                 continue
 
