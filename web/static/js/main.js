@@ -55,12 +55,12 @@
  lines.forEach(function(line, i) {
  var hl = line
  .replace(/\/\/.*$/g, '<span class="comment">$&</span>')
- .replace(/"(?:[^"\\]|\.)*"/g, '<span class="string">$&</span>')
+ .replace(/"(?:[^"\\]|\\.)*"/g, '<span class="string">$&</span>')
  .replace(/\b\d+\.?\d*\b/g, '<span class="number">$&</span>');
 
  keywords.forEach(function(kw) {
  var re = new RegExp("\b" + kw + "\b", "g");
- hl = hl.replace(re, '<span class="kw">' + kw + '</span>');
+ hl = hl.replace(re, '<span class="keyword">' + kw + '</span>');
  });
  types.forEach(function(ty) {
  var re = new RegExp("\b" + ty + "\b", "g");
@@ -71,7 +71,7 @@
  hl = hl.replace(re, '<span class="builtin">' + bi + '</span>');
  });
 
- html += '<div class="line"><span class="ln">' + (i + 1) + '</span><span class="lc">' + hl + '</span></div>';
+ html += '<div class="code-line"><span class="line-num">' + (i + 1) + '</span><span class="line-content">' + hl + '</span></div>';
  });
  return html;
  }
@@ -130,13 +130,13 @@
  if (prevBtn) prevBtn.addEventListener('click', function() { if (simIndex > -1) { simIndex--; renderSim(); } });
  if (nextBtn) nextBtn.addEventListener('click', function() { if (simData && simIndex < simData.order.length - 1) { simIndex++; renderSim(); } });
  if (playBtn) playBtn.addEventListener('click', function() {
- if (simPlaying) { simPlaying = false; playBtn.textContent = 'Play'; return; }
+ if (simPlaying) { simPlaying = false; playBtn.textContent = '▶ Play'; return; }
  if (!simData || simData.order.length === 0) return;
- simPlaying = true; playBtn.textContent = 'Pause';
+ simPlaying = true; playBtn.textContent = '⏸ Pause';
  function step() {
  if (!simPlaying) return;
  if (simIndex < simData.order.length - 1) { simIndex++; renderSim(); setTimeout(step, 800); }
- else { simPlaying = false; playBtn.textContent = 'Play'; }
+ else { simPlaying = false; playBtn.textContent = '▶ Play'; }
  }
  step();
  });
@@ -149,6 +149,58 @@
  });
  var fitBtn = document.getElementById('btn-fit');
  if (fitBtn) fitBtn.addEventListener('click', function() { if (graphNet) graphNet.fit(); });
+
+ // BONUS 4: Export PNG button
+ var exportBtn = document.getElementById('btn-export-png');
+ if (exportBtn) exportBtn.addEventListener('click', exportGraphPNG);
+ }
+
+ // BONUS 4: Export graph as PNG
+ function exportGraphPNG() {
+ if (!graphNet) {
+ log('Aucun graphe a exporter. Compilez d\'abord.', 'warn');
+ return;
+ }
+ try {
+ // Get the canvas from vis.js network
+ var canvas = document.querySelector('#map-canvas canvas');
+ if (!canvas) {
+ log('Canvas non trouve pour l\'export.', 'err');
+ return;
+ }
+
+ // Create a temporary canvas with white background
+ var tempCanvas = document.createElement('canvas');
+ tempCanvas.width = canvas.width;
+ tempCanvas.height = canvas.height;
+ var ctx = tempCanvas.getContext('2d');
+
+ // Fill white background
+ ctx.fillStyle = '#1a1a2e';
+ ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+ // Draw the original canvas on top
+ ctx.drawImage(canvas, 0, 0);
+
+ // Add title
+ ctx.fillStyle = '#d8d8e8';
+ ctx.font = 'bold 16px sans-serif';
+ ctx.fillText('QuestLang Forge - Carte du Monde', 10, 25);
+ ctx.font = '12px sans-serif';
+ ctx.fillStyle = '#8a8aaa';
+ ctx.fillText('Genere le ' + new Date().toLocaleString(), 10, 45);
+
+ // Download
+ var link = document.createElement('a');
+ link.download = 'questlang_map_' + (currentFileName.replace('.ql', '') || 'monde') + '.png';
+ link.href = tempCanvas.toDataURL('image/png');
+ link.click();
+
+ log('Graphe exporte en PNG: ' + link.download, 'ok');
+ } catch (e) {
+ log('Erreur d\'export PNG: ' + e.message, 'err');
+ console.error('Export error:', e);
+ }
  }
 
  function bindEvents() {
@@ -293,9 +345,9 @@
  var content = document.getElementById('comp-detail-content');
  if (content) {
  var html = '';
- html += '<div>Total: ' + (details.total_time || '-') + '</div>';
- html += '<div>Tokens: ' + (details.tokens_count || '-') + '</div>';
- html += '<div>AST: ' + (details.ast_nodes || '-') + ' noeuds</div>';
+ html += '<p>Total: ' + (details.total_time || '-') + '</p>';
+ html += '<p>Tokens: ' + (details.tokens_count || '-') + '</p>';
+ html += '<p>AST: ' + (details.ast_nodes || '-') + ' noeuds</p>';
  content.innerHTML = html;
  }
  }
@@ -398,7 +450,7 @@
  var progressBar = document.getElementById('sim-progress-bar');
 
  if (!simData) {
- if (timeline) timeline.innerHTML = '<div class="sim-placeholder">Compilez pour simuler</div>';
+ if (timeline) timeline.innerHTML = '<p>Compilez pour simuler</p>';
  var g = document.getElementById('sim-gold'); if (g) g.textContent = '0';
  var x = document.getElementById('sim-xp'); if (x) x.textContent = '0';
  var ic = document.getElementById('sim-item-count'); if (ic) ic.textContent = '0';
@@ -425,7 +477,7 @@
  order.forEach(function(qid, i) {
  var step = document.createElement('div');
  step.className = 'sim-step' + (i <= simIndex ? ' completed' : '') + (i === simIndex ? ' active' : '');
- step.innerHTML = '<div class="sim-num">' + (i + 1) + '</div><div class="sim-name">' + esc(qid) + '</div>';
+ step.innerHTML = '<div class="step-num">' + (i + 1) + '</div><div class="step-name">' + esc(qid) + '</div>';
  step.addEventListener('click', function() { simIndex = i; renderSim(); });
  timeline.appendChild(step);
  });
@@ -434,17 +486,17 @@
  if (simIndex >= 0 && history[simIndex]) {
  var h = history[simIndex];
  if (detailTitle) detailTitle.textContent = h.title || h.quest;
- var body = '<div>Or: ' + ((h.inventory_after && h.inventory_after.gold) || 0) + ' | XP: ' + ((h.inventory_after && h.inventory_after.xp) || 0) + '</div>';
+ var body = '<p>Or: ' + ((h.inventory_after && h.inventory_after.gold) || 0) + ' | XP: ' + ((h.inventory_after && h.inventory_after.xp) || 0) + '</p>';
  var items = (h.inventory_after && h.inventory_after.items) || {};
  if (Object.keys(items).length > 0) {
- body += '<div class="sim-items">';
- Object.entries(items).forEach(function(kv) { body += '<span class="sim-item">' + esc(kv[0]) + ' x' + kv[1] + '</span>'; });
- body += '</div>';
+ body += '<div class="item-tags">';
+Object.entries(items).forEach(function(kv) { body += '<span class="item-tag">' + esc(kv[0]) + ' x' + kv[1] + '</span>'; });
+body += '</div>';
  }
  if (detailBody) detailBody.innerHTML = body;
  } else {
  if (detailTitle) detailTitle.textContent = 'Depart';
- if (detailBody) detailBody.innerHTML = '<div>Or: ' + ((simData.inventory && simData.inventory.gold) || 0) + '</div>';
+ if (detailBody) detailBody.innerHTML = '<p>Or: ' + ((simData.inventory && simData.inventory.gold) || 0) + '</p>';
  }
  }
 
@@ -482,7 +534,7 @@
  if (card) { var b = card.querySelector('.pass-badge'); if (b) { b.className = 'pass-badge pending'; b.textContent = '--'; } var m = document.getElementById('pass-metrics-' + i); if (m) m.innerHTML = ''; var e = document.getElementById('pass-errors-' + i); if (e) e.innerHTML = ''; }
  }
  var content = document.getElementById('comp-detail-content');
- if (content) content.innerHTML = '<div>Chargez et compilez.</div>';
+ if (content) content.innerHTML = '<p>Chargez et compilez.</p>';
  simData = null; simIndex = -1; renderSim();
  ['m-quests','m-items','m-npcs','m-errs','m-warns','m-tokens','m-time'].forEach(function(id) {
  var el = document.getElementById(id); if (el) el.textContent = '-';
@@ -509,7 +561,7 @@
  function setCompiling(on) {
  var btn = document.getElementById('btn-compile');
  if (!btn) return;
- if (on) { btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true; }
+ if (on) { btn.innerHTML = '<span class="spinner"></span> Compil...'; btn.disabled = true; }
  else { btn.innerHTML = 'Compiler'; btn.disabled = false; }
  }
 

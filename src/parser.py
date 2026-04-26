@@ -104,9 +104,9 @@ class Parser:
         """Recuperation d'erreurs: avance jusqu'au prochain point de synchronisation."""
         self.consume()
         while not self.match(TokenType.EOF):
-            if self.current().type in [TokenType.WORLD, TokenType.QUEST, 
-                                        TokenType.ITEM, TokenType.NPC, 
-                                        TokenType.FUNC, TokenType.VAR]:
+            if self.current().type in [TokenType.WORLD, TokenType.QUEST,
+                                       TokenType.ITEM, TokenType.NPC,
+                                       TokenType.FUNC, TokenType.VAR]:
                 return
             self.consume()
 
@@ -277,9 +277,9 @@ class Parser:
             if key == "title":
                 value = self.parse_expression()
             elif key == "type":
-                type_keywords = [TokenType.WEAPON, TokenType.ARMOR, TokenType.KEY, 
-                                TokenType.REAGENT, TokenType.CONSUMABLE, TokenType.MISC,
-                                TokenType.IDENTIFIER]
+                type_keywords = [TokenType.WEAPON, TokenType.ARMOR, TokenType.KEY,
+                                 TokenType.REAGENT, TokenType.CONSUMABLE, TokenType.MISC,
+                                 TokenType.IDENTIFIER]
                 if self.match(*type_keywords):
                     type_tok = self.consume()
                     value = type_tok.value
@@ -638,7 +638,7 @@ class Parser:
         return self.parse_primary()
 
     def parse_primary(self):
-        """primary ::= NUMBER | STRING | BOOL | ID | '(' expr ')' | ID '(' args ')' | '[' elements ']' | ID '[' expr ']' | ID '.' ID"""
+        """primary ::= NUMBER | STRING | BOOL | ID | '(' expr ')' | ID '(' args ')' | '[' elements ']' | ID '[' expr ']' | ID '.' ID | CALL ID '(' args ')'"""
         line = self.current().line
         col = self.current().column
 
@@ -664,6 +664,16 @@ class Parser:
 
         if self.match(TokenType.LBRACKET):
             return self.parse_list_literal()
+
+        # FIX #3: Ajouter le support de CALL dans les expressions
+        if self.match(TokenType.CALL):
+            self.consume(TokenType.CALL)
+            name_tok = self.expect(TokenType.IDENTIFIER, "Attendu le nom de la fonction apres 'call'")
+            name = name_tok.value if name_tok else ""
+            self.expect(TokenType.LPAREN, "Attendu '(' apres le nom de la fonction")
+            args = self.parse_arg_list()
+            self.expect(TokenType.RPAREN, "Attendu ')' apres les arguments")
+            return CallExprNode(name, args, line, col)
 
         if self.match(TokenType.IDENTIFIER):
             name = self.consume().value

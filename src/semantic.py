@@ -2,11 +2,15 @@
 """
 Analyse semantique pour QuestLang v2.
 4 passes d'analyse :
- 1. Table des symboles (symboles, doublons, references indefinies)
- 2. Accessibilite (DFS depuis start_quest)
- 3. Economie (analyse de flux d'items/or)
- 4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
+  1. Table des symboles (symboles, doublons, references indefinies)
+  2. Accessibilite (DFS depuis start_quest)
+  3. Economie (analyse de flux d'items/or)
+  4. Cycles (Tarjan SCC pour detecter les deadlocks narratifs)
 """
+
+import sys
+# FIX #6: Augmenter la limite de recursion pour Tarjan SCC sur les grands graphes
+sys.setrecursionlimit(10000)
 
 from collections import defaultdict, deque
 from typing import List, Dict, Set, Tuple, Optional
@@ -20,8 +24,58 @@ class SymbolTable:
         self.items: Dict[str, ItemNode] = {}
         self.npcs: Dict[str, NPCNode] = {}
         self.functions: Dict[str, FunctionNode] = {}
-        self.variables: Dict[str, VarDeclNode] = {}
+        self.variables: Dict[str, VarDeclNode] = {}  # Variables globales (world-level)
         self.world: Optional[WorldNode] = None
+        # FIX #4: Support de la portee locale pour les variables de script/fonction
+        self.scope_stack: List[Dict[str, VarDeclNode]] = []
+
+    def push_scope(self):
+        """Ajoute un nouveau niveau de portee locale."""
+        self.scope_stack.append({})
+
+    def pop_scope(self):
+        """Retire le niveau de portee locale actuel."""
+        if self.scope_stack:
+            self.scope_stack.pop()
+
+    def add_variable(self, var: VarDeclNode):
+        """Ajoute une variable globale (niveau world)."""
+        if var.name in self.variables:
+            raise SemanticError(
+                f"Variable '{var.name}' deja definie",
+                var.line, var.column
+            )
+        self.variables[var.name] = var
+
+    def add_local_variable(self, var: VarDeclNode):
+        """Ajoute une variable dans la portee locale actuelle (script/fonction)."""
+        if self.scope_stack:
+            # Portee locale active
+            current_scope = self.scope_stack[-1]
+            if var.name in current_scope:
+                raise SemanticError(
+                    f"Variable locale '{var.name}' deja definie dans ce bloc",
+                    var.line, var.column
+                )
+            current_scope[var.name] = var
+        else:
+            # Pas de portee locale, ajouter globalement (compatibilite)
+            self.add_variable(var)
+
+    def has_variable(self, name: str) -> bool:
+        """Verifie si une variable existe (globale ou dans les portees locales actives)."""
+        # Chercher dans les portees locales (de la plus interne a la plus externe)
+        for scope in reversed(self.scope_stack):
+            if name in scope:
+                return True
+        return name in self.variables
+
+    def get_variable(self, name: str) -> Optional[VarDeclNode]:
+        """Retourne une variable si elle existe."""
+        for scope in reversed(self.scope_stack):
+            if name in scope:
+                return scope[name]
+        return self.variables.get(name)
 
     def add_quest(self, quest: QuestNode):
         if quest.name in self.quests:
@@ -59,15 +113,6 @@ class SymbolTable:
             )
         self.functions[func.name] = func
 
-    def add_variable(self, var: VarDeclNode):
-        """CORRECTION: Detection des variables dupliquees."""
-        if var.name in self.variables:
-            raise SemanticError(
-                f"Variable '{var.name}' deja definie",
-                var.line, var.column
-            )
-        self.variables[var.name] = var
-
     def has_quest(self, name: str) -> bool:
         return name in self.quests
 
@@ -79,7 +124,6 @@ class SymbolTable:
 
     def has_function(self, name: str) -> bool:
         return name in self.functions
-
 
 class SemanticAnalyzer:
     """
@@ -120,7 +164,7 @@ class SemanticAnalyzer:
         Passe 1: Construction de la table des symboles.
         Detecte: doublons, references indefinies, types manquants.
         """
-        # Enregistrer les declarations
+        # Enregistrer les declarations globales
         for decl in self.program.declarations:
             if isinstance(decl, WorldNode):
                 if self.symbol_table.world is not None:
@@ -131,6 +175,7 @@ class SemanticAnalyzer:
                     )
                 else:
                     self.symbol_table.world = decl
+                # Variables globales du world
                 for var in decl.variables:
                     try:
                         self.symbol_table.add_variable(var)
@@ -221,9 +266,11 @@ class SemanticAnalyzer:
                         quest.line, quest.column
                     )
 
-        # Verifier le script
+        # Verifier le script avec portee locale
         if quest.script:
+            self.symbol_table.push_scope()
             self._check_script_refs(quest.script, quest.name)
+            self.symbol_table.pop_scope()
 
     def _check_npc_refs(self, npc: NPCNode):
         """Verifie que les quetes donnees par le PNJ existent."""
@@ -252,9 +299,18 @@ class SemanticAnalyzer:
                             )
 
     def _check_function_body(self, func: FunctionNode):
-        """Verifie les references dans le corps d'une fonction."""
+        """Verifie les references dans le corps d'une fonction avec portee locale."""
         if func.body:
+            self.symbol_table.push_scope()
+            # Ajouter les parametres comme variables locales
+            for param in func.params:
+                param_node = VarDeclNode(param, LiteralNode(None, func.line, func.column), None, func.line, func.column)
+                try:
+                    self.symbol_table.add_local_variable(param_node)
+                except SemanticError:
+                    pass  # Parametre duplique deja signale par le parser
             self._check_script_refs(func.body, func.name)
+            self.symbol_table.pop_scope()
 
     def _check_script_refs(self, block: BlockNode, context: str):
         """Verifie les references dans un bloc d'instructions."""
@@ -263,7 +319,22 @@ class SemanticAnalyzer:
 
     def _check_stmt_refs(self, stmt, context: str):
         """Verifie les references dans une instruction."""
-        if isinstance(stmt, CallStmtNode):
+        if isinstance(stmt, VarDeclNode):
+            # FIX #4: Ajouter la variable dans la portee locale, pas globale
+            try:
+                self.symbol_table.add_local_variable(stmt)
+            except SemanticError as e:
+                self.reporter.add_error("DUPLICATE_VAR", e.message, e.line, e.column)
+            # Verifier aussi l'expression d'initialisation
+            if stmt.init_expr:
+                self._check_expr_refs(stmt.init_expr, context)
+        elif isinstance(stmt, AssignNode):
+            self._check_expr_refs(stmt.target, context)
+            self._check_expr_refs(stmt.value, context)
+        elif isinstance(stmt, CompoundAssignNode):
+            self._check_expr_refs(stmt.target, context)
+            self._check_expr_refs(stmt.value, context)
+        elif isinstance(stmt, CallStmtNode):
             call = stmt.call_expr
             if not self.symbol_table.has_function(call.name):
                 self.reporter.add_error(
@@ -271,16 +342,92 @@ class SemanticAnalyzer:
                     f"Appel a une fonction inexistante '{call.name}'",
                     call.line, call.column
                 )
+            for arg in call.args:
+                self._check_expr_refs(arg, context)
         elif isinstance(stmt, IfNode):
+            self._check_expr_refs(stmt.condition, context)
+            self.symbol_table.push_scope()
             self._check_script_refs(stmt.then_block, context)
+            self.symbol_table.pop_scope()
             if stmt.else_block:
+                self.symbol_table.push_scope()
                 self._check_script_refs(stmt.else_block, context)
+                self.symbol_table.pop_scope()
         elif isinstance(stmt, WhileNode):
+            self._check_expr_refs(stmt.condition, context)
+            self.symbol_table.push_scope()
             self._check_script_refs(stmt.body, context)
+            self.symbol_table.pop_scope()
         elif isinstance(stmt, ForNode):
+            self._check_expr_refs(stmt.iterable, context)
+            self.symbol_table.push_scope()
+            # Ajouter la variable de boucle
+            loop_var = VarDeclNode(stmt.var_name, LiteralNode(None, stmt.line, stmt.column), None, stmt.line, stmt.column)
+            try:
+                self.symbol_table.add_local_variable(loop_var)
+            except SemanticError:
+                pass
             self._check_script_refs(stmt.body, context)
+            self.symbol_table.pop_scope()
+        elif isinstance(stmt, ReturnNode):
+            if stmt.value:
+                self._check_expr_refs(stmt.value, context)
+        elif isinstance(stmt, GiveStmtNode):
+            for r in stmt.rewards if isinstance(stmt.rewards, list) else []:
+                self._check_expr_refs(r, context)
+        elif isinstance(stmt, TakeStmtNode):
+            for r in stmt.rewards if isinstance(stmt.rewards, list) else []:
+                self._check_expr_refs(r, context)
         elif isinstance(stmt, BlockNode):
+            self.symbol_table.push_scope()
             self._check_script_refs(stmt, context)
+            self.symbol_table.pop_scope()
+
+    def _check_expr_refs(self, expr, context: str):
+        """Verifie les references dans une expression."""
+        if isinstance(expr, IdentifierNode):
+            # BONUS 3: Verifier si l'identifiant est une variable declaree
+            # On ignore les mots-cles speciaux (xp, gold sont des ressources, pas des variables)
+            reserved_names = {'xp', 'gold', 'true', 'false'}
+            if (not self.symbol_table.has_variable(expr.name) and 
+                expr.name not in reserved_names and
+                not self.symbol_table.has_quest(expr.name) and
+                not self.symbol_table.has_item(expr.name) and
+                not self.symbol_table.has_npc(expr.name) and
+                not self.symbol_table.has_function(expr.name)):
+                # Variable non declaree utilisee dans une expression
+                self.reporter.add_error(
+                    "UNDECLARED_VAR",
+                    f"Variable '{expr.name}' utilisee mais non declaree dans '{context}'",
+                    expr.line, expr.column
+                )
+        elif isinstance(expr, BinaryOpNode):
+            self._check_expr_refs(expr.left, context)
+            self._check_expr_refs(expr.right, context)
+        elif isinstance(expr, UnaryOpNode):
+            self._check_expr_refs(expr.operand, context)
+        elif isinstance(expr, CallExprNode):
+            if not self.symbol_table.has_function(expr.name):
+                self.reporter.add_error(
+                    "UNDEF_FUNC_REF",
+                    f"Appel a une fonction inexistante '{expr.name}'",
+                    expr.line, expr.column
+                )
+            for arg in expr.args:
+                self._check_expr_refs(arg, context)
+        elif isinstance(expr, IndexNode):
+            self._check_expr_refs(expr.target, context)
+            self._check_expr_refs(expr.index, context)
+        elif isinstance(expr, PropertyAccessNode):
+            self._check_expr_refs(expr.target, context)
+        elif isinstance(expr, ListLiteralNode):
+            for elem in expr.elements:
+                self._check_expr_refs(elem, context)
+        elif isinstance(expr, ResourceNode):
+            if expr.amount:
+                self._check_expr_refs(expr.amount, context)
+            if expr.quantity:
+                self._check_expr_refs(expr.quantity, context)
 
     def _extract_string(self, node):
         """Extrait une valeur string d'un noeud AST."""
@@ -334,7 +481,7 @@ class SemanticAnalyzer:
                 return
 
         if not self.symbol_table.has_quest(start_quest):
-            return  # Deja signale en passe 1
+            return # Deja signale en passe 1
 
         # DFS iteratif
         visited = set()
@@ -403,8 +550,8 @@ class SemanticAnalyzer:
         Passe 3: Analyse economique du monde.
         Detecte: inflation/deflation d'or, deficit/surplus d'items.
         """
-        item_production = defaultdict(float)  # item -> quantite produite
-        item_consumption = defaultdict(float)  # item -> quantite consommee
+        item_production = defaultdict(float) # item -> quantite produite
+        item_consumption = defaultdict(float) # item -> quantite consommee
         gold_injected = 0.0
         gold_consumed = 0.0
 
@@ -483,6 +630,12 @@ class SemanticAnalyzer:
                 return left / right if right != 0 else 0
             elif node.op == '^':
                 return left ** right
+            return 0.0
+        if isinstance(node, IdentifierNode):
+            # Essayer de resoudre une variable constante
+            var = self.symbol_table.get_variable(node.name)
+            if var and var.init_expr:
+                return self._eval_expr(var.init_expr)
         return 0.0
 
     # ============================================================
@@ -503,7 +656,7 @@ class SemanticAnalyzer:
                     graph[qname].append(req)
             if "unlocks" in quest.properties and isinstance(quest.properties["unlocks"], IdListNode):
                 for unlocked in quest.properties["unlocks"].ids:
-                    graph[unlocked].append(qname)  # unlocked depend de qname
+                    graph[unlocked].append(qname) # unlocked depend de qname
 
         # Tarjan SCC
         index_counter = [0]
