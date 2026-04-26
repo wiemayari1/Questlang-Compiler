@@ -1,7 +1,2 @@
-# -*- coding: utf-8 -*-
-"""
-Package QuestLang Compiler.
-"""
-
-__version__ = "2.0"
-__author__ = "QuestLang Team"
+"""QuestLang Compiler - Source Package"""
+__version__ = "1.0.0"
