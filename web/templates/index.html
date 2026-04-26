@@ -4,133 +4,257 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QuestLang Forge</title>
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  /* Styles de secours minimaux si style.css est manquant */
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f0f1a; color: #d8d8e8; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  header { background: #1a1a2e; border-bottom: 1px solid #2a2a4e; padding: 8px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  header h1 { margin: 0; font-size: 1.2rem; color: #c9a84c; }
+  #workspace { display: flex; flex: 1; overflow: hidden; }
+  #panel-left { width: 45%; min-width: 260px; display: flex; flex-direction: column; background: #131324; border-right: 1px solid #2a2a4e; }
+  #splitter { width: 6px; background: #2a2a4e; cursor: col-resize; flex-shrink: 0; }
+  #panel-right { flex: 1; display: flex; flex-direction: column; min-width: 280px; background: #0f0f1a; }
+  .toolbar { padding: 8px 12px; background: #1a1a2e; border-bottom: 1px solid #2a2a4e; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .toolbar button, .toolbar select { background: #2a2a4e; color: #d8d8e8; border: 1px solid #3a3a6e; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+  .toolbar button:hover { background: #3a3a6e; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .toolbar button.active { background: #c9a84c; color: #0f0f1a; border-color: #c9a84c; }
+  #file-info { font-size: 0.75rem; color: #8a8aaa; margin-left: auto; }
+  #source-display { flex: 1; overflow: auto; padding: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; line-height: 1.5; }
+  .code-line { display: flex; }
+  .line-num { color: #4a4a6e; min-width: 32px; text-align: right; padding-right: 12px; user-select: none; }
+  .line-content { flex: 1; white-space: pre; }
+  .hl-kw { color: #c678dd; font-weight: bold; }
+  .hl-type { color: #e5c07b; }
+  .hl-bi { color: #56b6c2; }
+  .hl-string { color: #98c379; }
+  .hl-num { color: #d19a66; }
+  .hl-comment { color: #5c6370; font-style: italic; }
+  .tabs { display: flex; background: #1a1a2e; border-bottom: 1px solid #2a2a4e; }
+  .vtab { padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.85rem; color: #8a8aaa; }
+  .vtab:hover { color: #d8d8e8; }
+  .vtab.active { color: #c9a84c; border-bottom-color: #c9a84c; background: #131324; }
+  .view-pane { display: none; flex: 1; overflow: auto; padding: 16px; }
+  .view-pane.active { display: block; }
+  #map-canvas { height: 400px; border: 1px solid #2a2a4e; border-radius: 4px; background: #131324; }
+  .filters { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; }
+  .filters label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .pass-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+  .pass-card { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px; padding: 12px; }
+  .pass-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .pass-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+  .pass-badge.ok { background: #16c79a; color: #0f0f1a; }
+  .pass-badge.err { background: #e74c3c; color: #fff; }
+  .pass-badge.warn { background: #f39c12; color: #0f0f1a; }
+  .pass-badge.pending { background: #2a2a4e; color: #8a8aaa; }
+  .pass-badge.run { background: #c9a84c; color: #0f0f1a; }
+  .pass-metrics { font-size: 0.8rem; color: #8a8aaa; margin-bottom: 8px; }
+  .pass-errors { font-size: 0.8rem; max-height: 120px; overflow: auto; }
+  .e-item { color: #e74c3c; padding: 2px 0; }
+  .w-item { color: #f39c12; padding: 2px 0; }
+  .comp-pipeline { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .comp-step { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px; padding: 8px 12px; text-align: center; min-width: 100px; }
+  .comp-step.ok { border-color: #16c79a; }
+  .comp-step.err { border-color: #e74c3c; }
+  .comp-status { font-weight: bold; font-size: 0.8rem; }
+  .comp-time { font-size: 0.75rem; color: #8a8aaa; }
+  .sim-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sim-inventory { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px; padding: 12px; }
+  .sim-inv-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #2a2a4e; }
+  .sim-inv-item:last-child { border-bottom: none; }
+  .sim-timeline { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+  .sim-step { min-width: 100px; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px; padding: 8px; text-align: center; cursor: pointer; }
+  .sim-step.completed { border-color: #16c79a; }
+  .sim-step.active { border-color: #c9a84c; background: #2a2a4e; }
+  .sim-step-num { font-size: 0.75rem; color: #8a8aaa; }
+  .sim-step-name { font-size: 0.85rem; font-weight: bold; margin-top: 4px; }
+  .sim-controls { display: flex; gap: 8px; margin: 12px 0; }
+  .sim-detail { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px; padding: 12px; }
+  .progress-bar { height: 6px; background: #2a2a4e; border-radius: 3px; margin: 8px 0; overflow: hidden; }
+  .progress-fill { height: 100%; background: #c9a84c; width: 0%; transition: width 0.3s; }
+  .metrics-bar { display: flex; gap: 16px; padding: 8px 12px; background: #1a1a2e; border-bottom: 1px solid #2a2a4e; font-size: 0.8rem; }
+  .metric { display: flex; align-items: center; gap: 4px; }
+  .metric-val { font-weight: bold; color: #c9a84c; }
+  #console { height: 160px; background: #0a0a14; border-top: 1px solid #2a2a4e; display: flex; flex-direction: column; flex-shrink: 0; }
+  #console-header { padding: 6px 12px; background: #1a1a2e; border-bottom: 1px solid #2a2a4e; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; }
+  #console-body { flex: 1; overflow: auto; padding: 8px 12px; font-family: monospace; font-size: 0.8rem; }
+  .c-line { padding: 2px 0; }
+  .c-line.info { color: #8a8aaa; }
+  .c-line.ok { color: #16c79a; }
+  .c-line.err { color: #e74c3c; }
+  .c-line.warn { color: #f39c12; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #2a2a4e; }
+  th { color: #8a8aaa; font-weight: normal; }
+  pre { background: #1a1a2e; padding: 12px; border-radius: 4px; overflow: auto; font-size: 0.8rem; border: 1px solid #2a2a4e; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: #16c79a; }
+  .dot.err { background: #e74c3c; }
+  .dot.pending { background: #8a8aaa; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #d8d8e8; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<base target="_blank">
 </head>
 <body>
-<div id="app">
-  <header id="topbar">
-    <div id="brand">
-      <div id="logo-mark"></div>
-      <div>
-        <div id="logo-text">QuestLang Forge</div>
-        <div id="logo-sub">Compilateur de Mondes RPG</div>
+
+<header>
+  <h1>⚔ QuestLang Forge</h1>
+  <span style="color:#8a8aaa;font-size:0.8rem;">Compilateur de Mondes RPG</span>
+  <select id="example-select"></select>
+  <input type="file" id="file-input" accept=".ql" style="display:none">
+  <button id="btn-load">📂 Charger</button>
+  <button id="btn-compile">Compiler</button>
+  <button id="btn-step">Pas-a-pas</button>
+  <button id="btn-clear">🗑 Effacer</button>
+  <span id="status-dot" class="status-dot dot pending"></span>
+  <span id="file-info">Aucun fichier</span>
+</header>
+
+<div id="workspace">
+  <div id="panel-left">
+    <div style="padding:8px 12px;background:#1a1a2e;border-bottom:1px solid #2a2a4e;font-size:0.85rem;">
+      <strong>Source</strong> <span id="file-name" style="color:#c9a84c;">Aucun</span>
+    </div>
+    <div id="source-display"><div class="code-line"><span class="line-num">1</span><span class="line-content" style="color:#5c6370;">// Chargez un exemple et compilez.</span></div></div>
+  </div>
+  <div id="splitter"></div>
+  <div id="panel-right">
+    <div class="tabs">
+      <div class="vtab active" data-tab="map">🗺 Carte</div>
+      <div class="vtab" data-tab="analysis">🔍 Analyse</div>
+      <div class="vtab" data-tab="simulation">🎮 Simulation</div>
+      <div class="vtab" data-tab="tokens">🔤 Tokens</div>
+      <div class="vtab" data-tab="ast">🌳 AST</div>
+      <div class="vtab" data-tab="ir">📋 IR</div>
+    </div>
+
+    <!-- CARTE -->
+    <div id="view-map" class="view-pane active">
+      <div id="map-canvas"></div>
+      <div class="filters">
+        <label><input type="checkbox" id="filter-quest" checked> Quetes</label>
+        <label><input type="checkbox" id="filter-item" checked> Items</label>
+        <label><input type="checkbox" id="filter-npc" checked> PNJ</label>
+        <label><input type="checkbox" id="filter-reward" checked> Recompenses</label>
+        <button id="btn-fit" style="margin-left:auto;">↔ Ajuster</button>
+        <button id="btn-export-png">💾 Export PNG</button>
       </div>
     </div>
-    <div id="topbar-center">
-      <select id="example-select"><option value="">-- Charger un exemple --</option></select>
-      <span id="file-name" class="file-name"></span>
-    </div>
-    <div id="topbar-actions">
-      <button id="btn-step" class="btn btn-ghost">Pas-a-pas</button>
-      <button id="btn-compile" class="btn btn-run">Compiler</button>
-      <button id="btn-clear" class="btn">Effacer</button>
-    </div>
-  </header>
-  <div id="workspace">
-    <div id="panel-left">
-      <div class="panel-head">
-        <span class="panel-label">Source</span>
-        <span id="status-dot" class="dot"></span>
+
+    <!-- ANALYSE -->
+    <div id="view-analysis" class="view-pane">
+      <h3 style="margin-top:0;">Pipeline de compilation</h3>
+      <div class="comp-pipeline">
+        <div class="comp-step" id="comp-step-1"><div class="comp-status pending">--</div><div>Lexical</div><div class="comp-time"></div></div>
+        <div class="comp-step" id="comp-step-2"><div class="comp-status pending">--</div><div>Syntaxique</div><div class="comp-time"></div></div>
+        <div class="comp-step" id="comp-step-3"><div class="comp-status pending">--</div><div>Semantique</div><div class="comp-time"></div></div>
+        <div class="comp-step" id="comp-step-4"><div class="comp-status pending">--</div><div>Generation</div><div class="comp-time"></div></div>
       </div>
-      <div id="source-display"></div>
-      <div id="editor-footer"><span id="file-info">Aucun fichier</span></div>
-    </div>
-    <div id="splitter"></div>
-    <div id="panel-right">
-      <div class="panel-head">
-        <div id="view-tabs">
-          <button class="vtab active" data-tab="compilation">Compilation</button>
-          <button class="vtab" data-tab="map">Carte</button>
-          <button class="vtab" data-tab="simulation">Simulation</button>
-          <button class="vtab" data-tab="tokens">Tokens</button>
-          <button class="vtab" data-tab="ast">AST</button>
-          <button class="vtab" data-tab="ir">IR</button>
+      <div id="comp-detail-content"><p>Chargez un exemple et compilez.</p></div>
+
+      <h3>4 Passes Semantiques</h3>
+      <div class="pass-grid">
+        <div class="pass-card" id="pass-1">
+          <div class="pass-header"><strong>01 Symboles</strong><span class="pass-badge pending">--</span></div>
+          <div class="pass-metrics" id="pass-metrics-1"></div>
+          <div class="pass-errors" id="pass-errors-1"></div>
+        </div>
+        <div class="pass-card" id="pass-2">
+          <div class="pass-header"><strong>02 Accessibilite</strong><span class="pass-badge pending">--</span></div>
+          <div class="pass-metrics" id="pass-metrics-2"></div>
+          <div class="pass-errors" id="pass-errors-2"></div>
+        </div>
+        <div class="pass-card" id="pass-3">
+          <div class="pass-header"><strong>03 Economie</strong><span class="pass-badge pending">--</span></div>
+          <div class="pass-metrics" id="pass-metrics-3"></div>
+          <div class="pass-errors" id="pass-errors-3"></div>
+        </div>
+        <div class="pass-card" id="pass-4">
+          <div class="pass-header"><strong>04 Cycles</strong><span class="pass-badge pending">--</span></div>
+          <div class="pass-metrics" id="pass-metrics-4"></div>
+          <div class="pass-errors" id="pass-errors-4"></div>
         </div>
       </div>
-      <div id="view-body">
-        <div class="view-pane active" id="view-compilation">
-          <div id="comp-timeline">
-            <div class="comp-step" id="comp-step-1"><div class="comp-num">1</div><div class="comp-name">Lexical</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-2"><div class="comp-num">2</div><div class="comp-name">Syntaxique</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-3"><div class="comp-num">3</div><div class="comp-name">Semantique</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
-            <div class="comp-arrow"></div>
-            <div class="comp-step" id="comp-step-4"><div class="comp-num">4</div><div class="comp-name">Generation</div><div class="comp-status pending">--</div><div class="comp-time"></div></div>
+    </div>
+
+    <!-- SIMULATION -->
+    <div id="view-simulation" class="view-pane">
+      <div class="sim-panel">
+        <div>
+          <div class="sim-inventory">
+            <h4 style="margin-top:0;">Inventaire</h4>
+            <div class="sim-inv-item"><span>Or</span><span class="metric-val" id="sim-gold">0</span></div>
+            <div class="sim-inv-item"><span>XP</span><span class="metric-val" id="sim-xp">0</span></div>
+            <div class="sim-inv-item"><span>Items</span><span class="metric-val" id="sim-item-count">0</span></div>
           </div>
-          <div id="comp-details"><div id="comp-detail-content"><p class="comp-placeholder">Chargez un exemple et compilez.</p></div></div>
-          <div id="semantic-passes">
-            <h3>4 Passes Semantiques</h3>
-            <div id="passes-list">
-              <div class="pass-detail" id="pass-1"><div class="pass-header"><span class="pass-num">01</span><span class="pass-title">Symboles</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-1"></div><div class="pass-errors" id="pass-errors-1"></div></div>
-              <div class="pass-detail" id="pass-2"><div class="pass-header"><span class="pass-num">02</span><span class="pass-title">Accessibilite</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-2"></div><div class="pass-errors" id="pass-errors-2"></div></div>
-              <div class="pass-detail" id="pass-3"><div class="pass-header"><span class="pass-num">03</span><span class="pass-title">Economie</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-3"></div><div class="pass-errors" id="pass-errors-3"></div></div>
-              <div class="pass-detail" id="pass-4"><div class="pass-header"><span class="pass-num">04</span><span class="pass-title">Cycles</span><span class="pass-badge pending">--</span></div><div class="pass-metrics" id="pass-metrics-4"></div><div class="pass-errors" id="pass-errors-4"></div></div>
-            </div>
+          <div class="sim-controls">
+            <button id="sim-reset">↺ Reset</button>
+            <button id="sim-prev">← Prev</button>
+            <button id="sim-play">▶ Play</button>
+            <button id="sim-next">Next →</button>
           </div>
-          <div id="metrics-bar">
-            <div class="metric"><div class="metric-val" id="m-quests">-</div><div class="metric-lbl">Quetes</div></div>
-            <div class="metric"><div class="metric-val" id="m-items">-</div><div class="metric-lbl">Items</div></div>
-            <div class="metric"><div class="metric-val" id="m-npcs">-</div><div class="metric-lbl">PNJ</div></div>
-            <div class="metric"><div class="metric-val" id="m-errs">-</div><div class="metric-lbl">Erreurs</div></div>
-            <div class="metric"><div class="metric-val" id="m-warns">-</div><div class="metric-lbl">Alertes</div></div>
-            <div class="metric"><div class="metric-val" id="m-tokens">-</div><div class="metric-lbl">Tokens</div></div>
-            <div class="metric"><div class="metric-val" id="m-time">-</div><div class="metric-lbl">Temps</div></div>
-          </div>
+          <div class="progress-bar"><div class="progress-fill" id="sim-progress-bar"></div></div>
         </div>
-        <div class="view-pane" id="view-map">
-          <div id="map-toolbar">
-            <label class="chk"><input type="checkbox" id="filter-quest" checked><span>Quetes</span></label>
-            <label class="chk"><input type="checkbox" id="filter-item" checked><span>Items</span></label>
-            <label class="chk"><input type="checkbox" id="filter-npc" checked><span>PNJ</span></label>
-            <label class="chk"><input type="checkbox" id="filter-reward" checked><span>Recompenses</span></label>
-            <button id="btn-fit" class="btn btn-sm">Centrer</button>
-          </div>
-          <div id="map-canvas"></div>
-          <div id="map-legend">
-            <div class="leg-item"><span class="leg-box quest"></span> Quete</div>
-            <div class="leg-item"><span class="leg-box item"></span> Item</div>
-            <div class="leg-item"><span class="leg-box npc"></span> PNJ</div>
-          </div>
-        </div>
-        <div class="view-pane" id="view-simulation">
-          <div id="sim-header">
-            <div id="sim-inventory">
-              <div class="inv-slot"><span class="inv-label">Or</span><span class="inv-val" id="sim-gold">0</span></div>
-              <div class="inv-slot"><span class="inv-label">XP</span><span class="inv-val" id="sim-xp">0</span></div>
-              <div class="inv-slot"><span class="inv-label">Items</span><span class="inv-val" id="sim-item-count">0</span></div>
-            </div>
-            <div id="sim-controls">
-              <button id="sim-reset" class="btn btn-sm">Reset</button>
-              <button id="sim-prev" class="btn btn-sm">&lt;</button>
-              <button id="sim-next" class="btn btn-sm">&gt;</button>
-              <button id="sim-play" class="btn btn-sm">Play</button>
-            </div>
-          </div>
-          <div id="sim-progress"><div id="sim-progress-bar"></div></div>
-          <div id="sim-timeline"></div>
-          <div id="sim-detail">
-            <div id="sim-detail-title">Selectionnez une etape</div>
+        <div>
+          <div class="sim-detail">
+            <h4 style="margin-top:0;" id="sim-detail-title">Selectionnez une etape</h4>
             <div id="sim-detail-body"></div>
           </div>
         </div>
-        <div class="view-pane" id="view-tokens">
-          <table id="tok-table"><thead><tr><th>Ligne</th><th>Col</th><th>Type</th><th>Valeur</th></tr></thead><tbody id="tok-body"></tbody></table>
-        </div>
-        <div class="view-pane" id="view-ast"><pre id="ast-pre">Compilez pour afficher.</pre></div>
-        <div class="view-pane" id="view-ir"><pre id="ir-pre">Compilez pour afficher.</pre></div>
+      </div>
+      <h4>Ordre de completion</h4>
+      <div class="sim-timeline" id="sim-timeline">
+        <div class="sim-placeholder" style="color:#5c6370;">Compilez pour simuler</div>
       </div>
     </div>
-  </div>
-  <div id="console-panel">
-    <div id="console-head"><span>Console</span><button id="btn-clr-console">Vider</button></div>
-    <div id="console-body"></div>
+
+    <!-- TOKENS -->
+    <div id="view-tokens" class="view-pane">
+      <table>
+        <thead><tr><th>Ligne</th><th>Col</th><th>Type</th><th>Valeur</th></tr></thead>
+        <tbody id="tok-body"><tr><td colspan="4">Compilez pour afficher.</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- AST -->
+    <div id="view-ast" class="view-pane">
+      <pre id="ast-pre">Compilez pour afficher.</pre>
+    </div>
+
+    <!-- IR -->
+    <div id="view-ir" class="view-pane">
+      <pre id="ir-pre">Compilez pour afficher.</pre>
+    </div>
   </div>
 </div>
+
+<!-- Barre de metriques -->
+<div class="metrics-bar">
+  <div class="metric">Quetes: <span class="metric-val" id="m-quests">-</span></div>
+  <div class="metric">Items: <span class="metric-val" id="m-items">-</span></div>
+  <div class="metric">PNJ: <span class="metric-val" id="m-npcs">-</span></div>
+  <div class="metric">Erreurs: <span class="metric-val" id="m-errs">-</span></div>
+  <div class="metric">Alertes: <span class="metric-val" id="m-warns">-</span></div>
+  <div class="metric">Tokens: <span class="metric-val" id="m-tokens">-</span></div>
+  <div class="metric">Temps: <span class="metric-val" id="m-time">-</span></div>
+</div>
+
+<!-- CONSOLE -->
+<div id="console">
+  <div id="console-header">
+    <span>Console</span>
+    <button id="btn-clr-console" style="background:transparent;border:none;color:#8a8aaa;cursor:pointer;font-size:0.8rem;">Vider</button>
+  </div>
+  <div id="console-body"></div>
+</div>
+
 <script>
-window.QUESTLANG_EXAMPLES = {"monde_complexe": "world royaume_eldoria {\n    start: quete_village;\n    start_gold: 100;\n    win_condition: quete_royale;\n}\n\nquest quete_village {\n    title: \"Le Village en Detresse\";\n    desc: \"Des gobelins attaquent le village.\";\n    unlocks: quete_foret, quete_mine;\n    rewards: xp 50, gold 20;\n}\n\nquest quete_foret {\n    title: \"La Foret Maudite\";\n    desc: \"Trouvez l'herbe medicinale.\";\n    requires: quete_village;\n    unlocks: quete_chateau;\n    rewards: xp 100, gold 30, 1 herbe_rare;\n    costs: 1 torche;\n}\n\nquest quete_mine {\n    title: \"Les Profondeurs\";\n    desc: \"Recuperez le minerai magique.\";\n    requires: quete_village;\n    unlocks: quete_forge;\n    rewards: xp 120, gold 40, 1 minerai_magique;\n    costs: 2 torche;\n}\n\nquest quete_forge {\n    title: \"La Forge Celeste\";\n    desc: \"Forgez l'epee legendaire.\";\n    requires: quete_mine;\n    unlocks: quete_royale;\n    rewards: xp 200, gold 50, 1 epee_legendaire;\n    costs: 1 minerai_magique;\n}\n\nquest quete_chateau {\n    title: \"Le Chateau Oublie\";\n    desc: \"Trouvez le parchemin ancien.\";\n    requires: quete_foret;\n    unlocks: quete_royale;\n    rewards: xp 150, gold 40, 1 parchemin_ancien;\n}\n\nquest quete_royale {\n    title: \"Le Couronnement\";\n    desc: \"Devenez le roi d'Eldoria.\";\n    requires: quete_forge, quete_chateau;\n    rewards: xp 1000, gold 500, 1 couronne_royale;\n}\n\nitem herbe_rare { title: \"Herbe Rare\"; value: 30; stackable: true; type: material; }\nitem torche { title: \"Torche\"; value: 5; stackable: true; type: consumable; }\nitem minerai_magique { title: \"Minerai Magique\"; value: 100; stackable: false; type: material; }\nitem epee_legendaire { title: \"Epee Legendaire\"; value: 500; stackable: false; type: weapon; }\nitem parchemin_ancien { title: \"Parchemin Ancien\"; value: 200; stackable: false; type: artifact; }\nitem couronne_royale { title: \"Couronne Royale\"; value: 5000; stackable: false; type: artifact; }\n\nnpc chef_village { title: \"Chef du Village\"; location: village; gives_quest: quete_village; }\nnpc druide { title: \"Le Druide\"; location: foret; gives_quest: quete_foret; }\nnpc mineur_nain { title: \"Thorin le Mineur\"; location: mine; gives_quest: quete_mine; }\nnpc forgeron_maitre { title: \"Maître Forgeron\"; location: forge; gives_quest: quete_forge; }\nnpc roi { title: \"Roi Eldor\"; location: chateau; gives_quest: quete_royale; }", "monde_deadlock": "world deadlock_test {\n    start: q1;\n    start_gold: 100;\n    win_condition: q3;\n}\n\nquest q1 {\n    title: \"Quete A\";\n    desc: \"A a besoin de B.\";\n    requires: q2;\n    unlocks: q3;\n    rewards: xp 100;\n}\n\nquest q2 {\n    title: \"Quete B\";\n    desc: \"B a besoin de A.\";\n    requires: q1;\n    rewards: xp 100;\n}\n\nquest q3 {\n    title: \"Quete C\";\n    desc: \"Jamais atteinte.\";\n    requires: q1;\n    rewards: xp 200;\n}", "monde_erreurs": "world monde_casse {\n    start: quete_inexistante;\n    start_gold: 50;\n    win_condition: quete_finale;\n}\n\nquest quete_depart {\n    title: \"Depart\";\n    desc: \"Quete de depart.\";\n    unlocks: quete_milieu;\n    rewards: xp 100, gold 25;\n}\n\nquest quete_milieu {\n    title: \"Milieu\";\n    desc: \"Quete du milieu.\";\n    requires: quete_inexistante;\n    unlocks: quete_finale;\n    rewards: xp 200, gold 50, 1 epee;\n    costs: 5 potion;\n}\n\nquest quete_finale {\n    title: \"Fin\";\n    desc: \"Quete finale.\";\n    requires: quete_milieu;\n    rewards: xp 500;\n}\n\nquest quete_orpheline {\n    title: \"Orpheline\";\n    desc: \"Jamais debloquee.\";\n    rewards: xp 999;\n}\n\nitem epee { title: \"Epee\"; value: 50; stackable: false; type: weapon; }", "monde_fonctions": "world test_fonctions {\n    start: q1;\n    start_gold: 50;\n    win_condition: q2;\n}\n\nfunc calculer_bonus(niveau) {\n    var bonus = niveau * 10;\n    if (bonus > 50) {\n        return bonus;\n    }\n    return 50;\n}\n\nfunc verifier_or(montant) {\n    if (montant >= 100) {\n        return true;\n    }\n    return false;\n}\n\nquest q1 {\n    title: \"Test de Fonctions\";\n    desc: \"Test des fonctions utilisateur.\";\n    unlocks: q2;\n    rewards: xp 100, gold 25;\n\n    script {\n        var niveau = 5;\n        var bonus = call calculer_bonus(niveau);\n        give xp bonus;\n\n        var riche = call verifier_or(bonus);\n        if (riche) {\n            give gold 10;\n        }\n    }\n}\n\nquest q2 {\n    title: \"Fin\";\n    desc: \"Victoire.\";\n    requires: q1;\n    rewards: xp 200;\n}", "monde_inaccessible": "world inaccessible_test {\n    start: q1;\n    start_gold: 50;\n    win_condition: q2;\n}\n\nquest q1 {\n    title: \"Accessible\";\n    desc: \"Celle-ci est OK.\";\n    unlocks: q2;\n    rewards: xp 100, gold 25;\n}\n\nquest q2 {\n    title: \"Victoire\";\n    desc: \"Condition de victoire.\";\n    requires: q1;\n    rewards: xp 500;\n}\n\nquest q3 {\n    title: \"Oubliee\";\n    desc: \"Personne ne debloque cette quete.\";\n    rewards: xp 1000, gold 999;\n}", "monde_inflation": "world inflation_test {\n    start: q1;\n    start_gold: 10;\n    win_condition: q3;\n}\n\nquest q1 {\n    title: \"Quete d'Or\";\n    desc: \"Trop d'or injecte.\";\n    unlocks: q2;\n    rewards: gold 10000, xp 50;\n}\n\nquest q2 {\n    title: \"Milieu\";\n    desc: \"Transition.\";\n    requires: q1;\n    unlocks: q3;\n    rewards: gold 5000, xp 50;\n}\n\nquest q3 {\n    title: \"Fin\";\n    desc: \"Victoire.\";\n    requires: q2;\n    rewards: xp 100;\n}", "monde_valdris": "world valdris {\n    start: quete_depart;\n    start_gold: 50;\n    win_condition: quete_finale;\n}\n\nquest quete_depart {\n    title: \"Le Reveil\";\n    desc: \"Vous vous reveillez dans un village detruit.\";\n    unlocks: quete_forgeron;\n    rewards: xp 100, gold 25;\n\n    script {\n        var bonus = 10;\n        if (bonus > 5) {\n            give xp bonus;\n        }\n    }\n}\n\nquest quete_forgeron {\n    title: \"L'Appel du Fer\";\n    desc: \"Le forgeron a besoin de minerai.\";\n    requires: quete_depart;\n    unlocks: quete_finale;\n    rewards: xp 200, gold 50, 1 epee_rouillee;\n    costs: 2 minerai;\n}\n\nquest quete_finale {\n    title: \"Le Dernier Combat\";\n    desc: \"Affrontez le dragon.\";\n    requires: quete_forgeron;\n    rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n    title: \"Epee Rouillee\";\n    value: 25;\n    stackable: false;\n    type: weapon;\n}\n\nitem minerai {\n    title: \"Minerai de Fer\";\n    value: 5;\n    stackable: true;\n    type: material;\n}\n\nitem ame_dragon {\n    title: \"Ame du Dragon\";\n    value: 1000;\n    stackable: false;\n    type: artifact;\n}\n\nnpc forgeron_gorak {\n    title: \"Gorak le Forgeron\";\n    location: forge_centrale;\n    gives_quest: quete_forgeron;\n}"};
+  window.QUESTLANG_EXAMPLES = {{ examples | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
 </body>
 </html>
