@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """QuestLang Forge - Version corrigee et robuste"""
-import os, sys
+import os, sys, threading
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -454,6 +454,61 @@ def count_ast_nodes(node, _visited=None):
 # ========================================================================
 # ROUTE /api/compile - CORRECTION: instanciation semantic + extraction reporter
 # ========================================================================
+
+class CompilationTimeout(Exception):
+    pass
+
+def compile_with_timeout(source, step_mode, timeout_sec=8):
+    """Execute la compilation avec un timeout pour eviter les boucles infinies."""
+    result = {"done": False, "data": None, "error": None}
+
+    def target():
+        try:
+            mods = get_modules()
+            if isinstance(mods, dict) and "error" in mods:
+                result["error"] = {"type": "import", "msg": mods['error'], "traceback": mods.get('traceback', '')}
+                result["done"] = True
+                return
+
+            lexer = mods['lexer'](source)
+            tokens = lexer.tokenize()
+
+            parser = mods['parser'](tokens)
+            ast = parser.parse()
+
+            semantic = mods['semantic']()
+            semantic.analyze(ast)
+            report = semantic.reporter
+
+            codegen = mods['codegen'](ast)
+            ir = codegen.generate_ir()  # CORRECTION: generate_ir() au lieu de generate()
+
+            result["data"] = {
+                "tokens": tokens,
+                "ast": ast,
+                "ir": ir,
+                "report": report,
+                "parser_errors": parser.errors
+            }
+            result["done"] = True
+        except Exception as e:
+            import traceback
+            result["error"] = {"type": "runtime", "msg": str(e), "traceback": traceback.format_exc()}
+            result["done"] = True
+
+    thread = threading.Thread(target=target)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout=timeout_sec)
+
+    if not result["done"]:
+        raise CompilationTimeout("La compilation a depasse le delai de {} secondes (boucle infinie probable)".format(timeout_sec))
+
+    if result["error"]:
+        raise Exception(result["error"]["msg"])
+
+    return result["data"]
+
 @app.route("/api/compile", methods=["POST"])
 def compile_code():
     data = request.get_json() or {}
@@ -468,37 +523,18 @@ def compile_code():
             "semantic_report": None, "compilation_details": None
         })
 
-    mods = get_modules()
-    if isinstance(mods, dict) and "error" in mods:
-        return jsonify({
-            "success": False,
-            "errors": [{
-                "message": f"Erreur d'import des modules: {mods['error']}",
-                "line": 0, "col": 0, "severity": "error"
-            }],
-            "warnings": [], "tokens": [], "ast": None, "ir": None,
-            "semantic_report": None, "compilation_details": None
-        })
-
     try:
         print(f"[SERVER] Debut compilation, source length={len(source)}")
+        comp_result = compile_with_timeout(source, step_mode, timeout_sec=8)
+        tokens = comp_result["tokens"]
+        ast = comp_result["ast"]
+        ir = comp_result["ir"]
+        report = comp_result["report"]
+        parser_errors = comp_result.get("parser_errors", [])
 
-        lexer = mods['lexer'](source)
-        tokens = lexer.tokenize()
         print(f"[SERVER] Lexer OK: {len(tokens)} tokens")
-
-        parser = mods['parser'](tokens)
-        ast = parser.parse()
         print(f"[SERVER] Parser OK")
-
-        # CORRECTION: instancier SemanticAnalyzer sans argument, puis appeler analyze(ast)
-        semantic = mods['semantic']()
-        semantic.analyze(ast)
-        report = semantic.reporter
         print(f"[SERVER] Semantic OK")
-
-        codegen = mods['codegen'](ast)
-        ir = codegen.generate()
         print(f"[SERVER] Codegen OK, ir type={type(ir)}")
 
         # Extraction des erreurs/avertissements depuis ErrorReporter
@@ -514,6 +550,18 @@ def compile_code():
                 entry = _error_to_dict(w, "warning")
                 entry["pass"] = ""
                 warnings.append(entry)
+
+        # Ajouter les erreurs de parsing
+        for pe in parser_errors:
+            if hasattr(pe, 'message'):
+                errors.append({
+                    "severity": "error",
+                    "message": pe.message,
+                    "line": getattr(pe, 'line', 0),
+                    "col": getattr(pe, 'column', 0),
+                    "code": "SYNTAX_ERROR",
+                    "pass": ""
+                })
 
         quest_graph = build_quest_graph(ast, ir)
         passes_report = build_passes_report(report)
@@ -558,6 +606,18 @@ def compile_code():
             "simulation": simulation
         })
 
+    except CompilationTimeout as te:
+        print(f"[SERVER] TIMEOUT: {te}")
+        return jsonify({
+            "success": False,
+            "errors": [{"message": str(te), "line": 0, "col": 0, "severity": "error"}],
+            "warnings": [],
+            "tokens": [],
+            "ast": None,
+            "ir": None,
+            "semantic_report": None,
+            "compilation_details": None
+        })
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
