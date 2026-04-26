@@ -521,46 +521,51 @@ class Parser:
         return CallStmtNode(CallExprNode(name, args, line, col), line, col)
 
     def parse_assignment_or_call(self):
-        """ID = expr ; | ID += expr ; | ID -= expr ; | ID ( args ) ; | ID [ expr ] = expr ;"""
-        line = self.current().line
-        col = self.current().column
-        name_tok = self.consume(TokenType.IDENTIFIER)
-        name = name_tok.value
+    """ID = expr ; | ID += expr ; | ID -= expr ; | ID ( args ) ; | ID [ expr ] = expr ;"""
+    line = self.current().line
+    col = self.current().column
+    name_tok = self.consume(TokenType.IDENTIFIER)
+    name = name_tok.value
 
-        if self.match(TokenType.LPAREN):
-            self.consume()
-            args = self.parse_arg_list()
-            self.expect(TokenType.RPAREN, "Attendu ')' apres les arguments")
-            self.expect(TokenType.SEMICOLON, "Attendu ';' apres l'appel")
-            return CallStmtNode(CallExprNode(name, args, line, col), line, col)
+    if self.match(TokenType.LPAREN):
+        self.consume()
+        args = self.parse_arg_list()
+        self.expect(TokenType.RPAREN, "Attendu ')' apres les arguments")
+        self.expect(TokenType.SEMICOLON, "Attendu ';' apres l'appel")
+        return CallStmtNode(CallExprNode(name, args, line, col), line, col)
 
-        target = IdentifierNode(name, line, col)
+    target = IdentifierNode(name, line, col)
 
-        if self.match(TokenType.LBRACKET):
-            self.consume()
-            index = self.parse_expression()
-            self.expect(TokenType.RBRACKET, "Attendu ']' apres l'index")
-            target = IndexNode(target, index, line, col)
+    if self.match(TokenType.LBRACKET):
+        self.consume()
+        index = self.parse_expression()
+        self.expect(TokenType.RBRACKET, "Attendu ']' apres l'index")
+        target = IndexNode(target, index, line, col)
 
-        if self.match(TokenType.ASSIGN):
+    if self.match(TokenType.ASSIGN):
+        self.consume()
+        value = self.parse_expression()
+        self.expect(TokenType.SEMICOLON, "Attendu ';' apres l'affectation")
+        return AssignNode(target, value, line, col)
+    elif self.match(TokenType.PLUS_ASSIGN):
+        self.consume()
+        value = self.parse_expression()
+        self.expect(TokenType.SEMICOLON, "Attendu ';' apres +=")
+        return CompoundAssignNode(target, '+=', value, line, col)
+    elif self.match(TokenType.MINUS_ASSIGN):
+        self.consume()
+        value = self.parse_expression()
+        self.expect(TokenType.SEMICOLON, "Attendu ';' apres -=")
+        return CompoundAssignNode(target, '-=', value, line, col)
+    else:
+        # CORRECTION ANTI-BOUCLE INFINIE
+        self.error("Attendu '=', '+=', '-=' ou '(' apres l'identifiant")
+        # On avance jusqu'au prochain point de synchronisation
+        while not self.match(TokenType.SEMICOLON, TokenType.RBRACE, TokenType.EOF, TokenType.NEWLINE):
             self.consume()
-            value = self.parse_expression()
-            self.expect(TokenType.SEMICOLON, "Attendu ';' apres l'affectation")
-            return AssignNode(target, value, line, col)
-        elif self.match(TokenType.PLUS_ASSIGN):
+        if self.match(TokenType.SEMICOLON):
             self.consume()
-            value = self.parse_expression()
-            self.expect(TokenType.SEMICOLON, "Attendu ';' apres +=")
-            return CompoundAssignNode(target, '+=', value, line, col)
-        elif self.match(TokenType.MINUS_ASSIGN):
-            self.consume()
-            value = self.parse_expression()
-            self.expect(TokenType.SEMICOLON, "Attendu ';' apres -=")
-            return CompoundAssignNode(target, '-=', value, line, col)
-        else:
-            self.error("Attendu '=', '+=', '-=' ou '(' apres l'identifiant")
-            self.expect(TokenType.SEMICOLON)
-            return None
+        return None
 
     def parse_expression(self):
         """expr ::= or_expr"""
