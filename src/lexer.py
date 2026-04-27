@@ -73,16 +73,18 @@ class Lexer:
 
  def advance(self):
   char = self.peek()
-  self.pos += 1
-  if char == '\n':
-   self.line += 1
-   self.column = 1
-  else:
-   self.column += 1
+  # Prevent advancing past EOF to avoid infinite loops if an error occurs at end of file
+  if char != '\0':
+      self.pos += 1
+      if char == '\n':
+       self.line += 1
+       self.column = 1
+      else:
+       self.column += 1
   return char
 
  def skip_whitespace(self):
-  while self.peek() in ' \t\r':
+  while self.peek() in ' \t\r' and self.peek() != '\0':
    self.advance()
 
  def skip_comment(self):
@@ -116,11 +118,11 @@ class Lexer:
  def read_number(self):
   sl, sc = self.line, self.column
   value = ""
-  while self.peek().isdigit():
+  while self.peek().isdigit() and self.peek() != '\0':
    value += self.advance()
   if self.peek() == '.' and self.peek(1).isdigit():
    value += self.advance()
-   while self.peek().isdigit():
+   while self.peek().isdigit() and self.peek() != '\0':
     value += self.advance()
    return Token(TokenType.NUMBER, float(value), sl, sc, self.filename)
   return Token(TokenType.NUMBER, int(value), sl, sc, self.filename)
@@ -128,7 +130,7 @@ class Lexer:
  def read_identifier(self):
   sl, sc = self.line, self.column
   value = ""
-  while self.peek().isalnum() or self.peek() == '_':
+  while (self.peek().isalnum() or self.peek() == '_') and self.peek() != '\0':
    value += self.advance()
   ttype = self.KEYWORDS.get(value, TokenType.IDENTIFIER)
   return Token(ttype, value, sl, sc, self.filename)
