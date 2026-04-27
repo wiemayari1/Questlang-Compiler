@@ -29,7 +29,6 @@ EXAMPLES = {
     "monde_valdris": "world valdris {\n start: quete_depart;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Le Reveil\";\n desc: \"Vous vous reveillez dans un village detruit.\";\n unlocks: quete_forgeron;\n rewards: xp 100, gold 25;\n\n script {\n var bonus = 10;\n if (bonus > 5) {\n give xp bonus;\n }\n }\n}\n\nquest quete_forgeron {\n title: \"L'Appel du Fer\";\n desc: \"Le forgeron a besoin de minerai.\";\n requires: quete_depart;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee_rouillee;\n costs: 2 minerai;\n}\n\nquest quete_finale {\n title: \"Le Dernier Combat\";\n desc: \"Affrontez le dragon.\";\n requires: quete_forgeron;\n rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n title: \"Epee Rouillee\";\n value: 25;\n stackable: false;\n type: weapon;\n}\n\nitem minerai {\n title: \"Minerai de Fer\";\n value: 5;\n stackable: true;\n type: material;\n}\n\nitem ame_dragon {\n title: \"Ame du Dragon\";\n value: 1000;\n stackable: false;\n type: artifact;\n}\n\nnpc forgeron_gorak {\n title: \"Gorak le Forgeron\";\n location: forge_centrale;\n gives_quest: quete_forgeron;\n}"
 }
 
-
 def get_modules():
     """Charge les modules src/ via importlib (robuste, pas besoin de __init__.py)."""
     try:
@@ -56,11 +55,9 @@ def get_modules():
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}
 
-
 @app.route("/")
 def index():
     return render_template("index.html", examples=EXAMPLES)
-
 
 @app.route("/api/health")
 def health():
@@ -72,7 +69,6 @@ def health():
         "modules": ["lexer", "parser", "semantic", "codegen"]
     })
 
-
 # --- Gestionnaires d'erreurs globaux ---
 
 @app.errorhandler(404)
@@ -80,7 +76,6 @@ def not_found(e):
     if request.path.startswith('/api/'):
         return jsonify({"success": False, "error": "Route non trouvee", "path": request.path}), 404
     return render_template("index.html", examples=EXAMPLES), 404
-
 
 @app.errorhandler(500)
 def internal_error(e):
@@ -94,7 +89,6 @@ def internal_error(e):
         }), 500
     return "Erreur interne", 500
 
-
 @app.errorhandler(Exception)
 def handle_exception(e):
     tb = traceback.format_exc()
@@ -106,7 +100,6 @@ def handle_exception(e):
             "traceback": tb
         }), 500
     raise e
-
 
 # --- Helpers ---
 
@@ -120,7 +113,6 @@ def _normalize_quests(ir):
         return list(raw.values())
     return []
 
-
 def _normalize_entities(ir, key):
     if not isinstance(ir, dict):
         return []
@@ -133,7 +125,6 @@ def _normalize_entities(ir, key):
         return list(raw.values())
     return []
 
-
 def _extract_title(entity, fallback):
     if not isinstance(entity, dict):
         return fallback
@@ -143,7 +134,6 @@ def _extract_title(entity, fallback):
     if isinstance(title, str):
         return title
     return str(title)
-
 
 def _error_to_dict(entry, severity="error"):
     if isinstance(entry, dict):
@@ -166,7 +156,6 @@ def _error_to_dict(entry, severity="error"):
     if hasattr(entry, 'code'):
         result["code"] = entry.code
     return result
-
 
 def compute_simulation(ir, ast):
     if not ir or not ast:
@@ -316,7 +305,6 @@ def compute_simulation(ir, ast):
         "win_reached": win_reached
     }
 
-
 def build_quest_graph(ast, ir):
     nodes = []
     edges = []
@@ -374,7 +362,6 @@ def build_quest_graph(ast, ir):
                 edges.append({"from": nid, "to": g, "type": "gives", "dashes": False, "color": "#1abc9c"})
     return {"nodes": nodes, "edges": edges}
 
-
 def build_passes_report(report):
     passes = [
         {"name": "Symboles", "status": "ok", "errors": [], "details": "", "metrics": {}},
@@ -394,10 +381,16 @@ def build_passes_report(report):
         "DEADLOCK_CYCLE": 3, "UNLOCK_LOOP": 3, "DEAD_ITEM": 3, "IDLE_NPC": 3
     }
     all_entries = []
-    if hasattr(report, 'errors') and isinstance(report.errors, list):
+    # FIX #2: Utiliser get_diagnostics() au lieu d'acceder directement a .errors/.warnings
+    if hasattr(report, 'get_diagnostics'):
+        diagnostics = report.get_diagnostics()
+        if isinstance(diagnostics, dict):
+            all_entries.extend([(e, "error") for e in diagnostics.get("errors", [])])
+            all_entries.extend([(w, "warning") for w in diagnostics.get("warnings", [])])
+    elif hasattr(report, 'errors') and isinstance(report.errors, list):
         all_entries.extend([(e, "error") for e in report.errors])
-    if hasattr(report, 'warnings') and isinstance(report.warnings, list):
-        all_entries.extend([(w, "warning") for w in report.warnings])
+        if hasattr(report, 'warnings') and isinstance(report.warnings, list):
+            all_entries.extend([(w, "warning") for w in report.warnings])
     for entry, severity in all_entries:
         code = entry.get("code", "") if isinstance(entry, dict) else getattr(entry, 'code', "")
         pass_idx = pass_map.get(code, 0)
@@ -419,7 +412,6 @@ def build_passes_report(report):
             p["details"] = "Aucun probleme detecte"
         p["metrics"] = {"errors": err_count, "warnings": warn_count}
     return passes
-
 
 def count_ast_nodes(node, _visited=None):
     if node is None:
@@ -447,10 +439,8 @@ def count_ast_nodes(node, _visited=None):
             count += count_ast_nodes(v, _visited)
     return count
 
-
 class CompilationTimeout(Exception):
     pass
-
 
 def compile_with_timeout(source, step_mode, timeout_sec=8):
     result = {"done": False, "data": None, "error": None}
@@ -472,11 +462,11 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
             ast = parser.parse()
             semantic = mods['semantic']()
             semantic.analyze(ast)
-            report = getattr(semantic, 'reporter', None)
-            if report is None:
-                report = semantic
-            codegen = mods['codegen'](ast)
-            ir = codegen.generate_ir() if hasattr(codegen, 'generate_ir') else codegen.generate()
+            # FIX #2: report est l'objet semantic lui-meme (expose get_diagnostics)
+            report = semantic
+            # FIX #1 & #3: passer None comme diagnostics (default), utiliser generate_ir()
+            codegen = mods['codegen'](ast, None)
+            ir = codegen.generate_ir()
             result["data"] = {
                 "tokens": tokens,
                 "ast": ast,
@@ -507,7 +497,6 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
         raise exc
     return result["data"]
 
-
 @app.route("/api/compile", methods=["POST"])
 def compile_code():
     data = request.get_json() or {}
@@ -528,7 +517,20 @@ def compile_code():
         report = comp_result["report"]
         parser_errors = comp_result.get("parser_errors", [])
         errors, warnings = [], []
-        if report:
+        # FIX #2: Utiliser get_diagnostics() pour recuperer les erreurs/warnings
+        if report and hasattr(report, 'get_diagnostics'):
+            diagnostics = report.get_diagnostics()
+            if isinstance(diagnostics, dict):
+                for e in diagnostics.get("errors", []):
+                    entry = _error_to_dict(e, "error")
+                    entry["pass"] = ""
+                    errors.append(entry)
+                for w in diagnostics.get("warnings", []):
+                    entry = _error_to_dict(w, "warning")
+                    entry["pass"] = ""
+                    warnings.append(entry)
+        elif report:
+            # Fallback si get_diagnostics n'existe pas
             if hasattr(report, 'errors') and isinstance(report.errors, list):
                 for e in report.errors:
                     entry = _error_to_dict(e, "error")
@@ -611,14 +613,12 @@ def compile_code():
             "_debug": {"traceback": tb}
         }), 500
 
-
 @app.route("/api/examples")
 def list_examples():
     result = []
     for name, content in EXAMPLES.items():
         result.append({"name": name, "content": content})
     return jsonify(result)
-
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
