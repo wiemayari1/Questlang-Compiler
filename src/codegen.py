@@ -15,6 +15,10 @@ class CodeGenerator:
     """
 
     def __init__(self, program: ProgramNode, diagnostics=None):
+        """
+        FIX #1: Accepte diagnostics=None par defaut (retrocompatible avec app.py).
+        Si diagnostics est None, initialise un dict vide.
+        """
         self.program = program
         self.diagnostics = diagnostics or {"errors": [], "warnings": [], "infos": [],
                                            "error_count": 0, "warning_count": 0, "info_count": 0}
@@ -32,6 +36,12 @@ class CodeGenerator:
             "diagnostics": self.diagnostics
         }
         return ir
+
+    def generate(self) -> dict:
+        """
+        FIX #3: Alias vers generate_ir() pour compatibilite avec tout appelant.
+        """
+        return self.generate_ir()
 
     def to_json(self, indent=2) -> str:
         """Convertit l'IR en chaine JSON formatee."""
@@ -60,216 +70,81 @@ class CodeGenerator:
         # NPCs HTML
         npcs_html = self._build_npcs_html()
 
-        return f"""<!DOCTYPE html>
+        return f"""
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuestLang - Rapport de Compilation</title>
-    <style>
-        :root {{
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-card: #0f3460;
-            --accent: #e94560;
-            --accent-green: #16c79a;
-            --accent-gold: #f4a261;
-            --text-primary: #eaeaea;
-            --text-secondary: #a0a0a0;
-            --border: #2a2a4a;
-        }}
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-        }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
-        header {{
-            background: var(--bg-secondary);
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            border-left: 5px solid var(--accent);
-        }}
-        header h1 {{ font-size: 2.2em; margin-bottom: 10px; }}
-        header .subtitle {{ color: var(--text-secondary); font-size: 1.1em; }}
-        .status {{
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            margin-top: 15px;
-        }}
-        .status.ok {{ background: var(--accent-green); color: #000; }}
-        .status.error {{ background: var(--accent); color: #fff; }}
-
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }}
-        .stat-card {{
-            background: var(--bg-card);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            border: 1px solid var(--border);
-        }}
-        .stat-card .number {{
-            font-size: 2.5em;
-            font-weight: bold;
-            color: var(--accent);
-        }}
-        .stat-card .label {{ color: var(--text-secondary); font-size: 0.9em; }}
-
-        .section {{
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 25px;
-            border: 1px solid var(--border);
-        }}
-        .section h2 {{
-            color: var(--accent-gold);
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border);
-        }}
-
-        .diagnostic {{
-            padding: 12px 15px;
-            margin: 8px 0;
-            border-radius: 8px;
-            border-left: 4px solid;
-        }}
-        .diagnostic.error {{ background: rgba(233, 69, 96, 0.1); border-color: var(--accent); }}
-        .diagnostic.warning {{ background: rgba(244, 162, 97, 0.1); border-color: var(--accent-gold); }}
-        .diagnostic.info {{ background: rgba(22, 199, 154, 0.1); border-color: var(--accent-green); }}
-        .diagnostic .code {{ font-weight: bold; font-family: monospace; }}
-        .diagnostic .msg {{ margin-left: 10px; }}
-        .diagnostic .loc {{ color: var(--text-secondary); font-size: 0.85em; margin-left: 10px; }}
-
-        .quest-card {{
-            background: var(--bg-card);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 15px 0;
-            border-left: 4px solid var(--accent);
-        }}
-        .quest-card.start {{ border-left-color: var(--accent-green); }}
-        .quest-card.final {{ border-left-color: var(--accent-gold); }}
-        .quest-card h3 {{ color: var(--text-primary); margin-bottom: 10px; }}
-        .quest-card .badge {{
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            margin-right: 5px;
-        }}
-        .badge.start {{ background: var(--accent-green); color: #000; }}
-        .badge.final {{ background: var(--accent-gold); color: #000; }}
-        .badge.normal {{ background: var(--border); color: var(--text-secondary); }}
-
-        .resource-tag {{
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.85em;
-            margin: 3px;
-        }}
-        .resource-tag.gold {{ background: #d4a017; color: #000; }}
-        .resource-tag.xp {{ background: #4a90d9; color: #fff; }}
-        .resource-tag.item {{ background: #8e44ad; color: #fff; }}
-        .resource-tag.cost {{ background: #c0392b; color: #fff; }}
-
-        .item-card, .npc-card {{
-            background: var(--bg-card);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-        }}
-
-        .graph-container {{
-            background: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            overflow-x: auto;
-        }}
-        .graph-container svg {{ max-width: 100%; }}
-
-        .code-block {{
-            background: #0d1117;
-            border-radius: 8px;
-            padding: 15px;
-            overflow-x: auto;
-            font-family: 'Consolas', monospace;
-            font-size: 0.9em;
-            color: #c9d1d9;
-        }}
-
-        footer {{
-            text-align: center;
-            padding: 20px;
-            color: var(--text-secondary);
-            font-size: 0.85em;
-        }}
-    </style>
+<meta charset="UTF-8">
+<title>QuestLang - Rapport de Compilation</title>
+<style>
+body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a12; color: #c8c8dc; margin: 0; padding: 20px; }}
+h1 {{ color: #c9a84c; border-bottom: 2px solid #c9a84c; padding-bottom: 10px; }}
+.stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }}
+.stat-card {{ background: #161628; padding: 15px; border-radius: 8px; border: 1px solid #252538; }}
+.stat-label {{ font-size: 12px; color: #6a6a8a; text-transform: uppercase; }}
+.stat-value {{ font-size: 24px; font-weight: 700; color: #c9a84c; }}
+.section {{ background: #161628; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #252538; }}
+.section h2 {{ color: #e0e0f0; margin-top: 0; }}
+.error {{ color: #c44; }}
+.warning {{ color: #d4a017; }}
+.info {{ color: #4a9eff; }}
+.success {{ color: #5cb85c; }}
+pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto; border: 1px solid #252538; }}
+.quest-card {{ background: #0e0e18; padding: 15px; margin: 10px 0; border-radius: 6px; border-left: 4px solid #c9a84c; }}
+.quest-card.start {{ border-left-color: #5cb85c; }}
+.quest-card.final {{ border-left-color: #e67e22; }}
+.badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px; }}
+.badge-start {{ background: rgba(92,184,92,0.2); color: #5cb85c; }}
+.badge-final {{ background: rgba(230,126,34,0.2); color: #e67e22; }}
+.tag {{ display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; margin: 2px; }}
+.tag-gold {{ background: rgba(201,168,76,0.15); color: #c9a84c; }}
+.tag-xp {{ background: rgba(74,158,255,0.15); color: #4a9eff; }}
+.tag-item {{ background: rgba(155,89,182,0.15); color: #9b59b6; }}
+</style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>QuestLang</h1>
-            <p class="subtitle">Rapport de compilation - Analyse complete du monde RPG</p>
-            <span class="status {'ok' if ir['compilation_status'] == 'OK' else 'error'}">
-                {'Compilation reussie' if ir['compilation_status'] == 'OK' else 'Erreurs detectees'}
-            </span>
-        </header>
+<h1>Rapport de compilation - Analyse complete du monde RPG</h1>
+<p class="{'success' if ir['compilation_status'] == 'OK' else 'error'}">
+    {'Compilation reussie' if ir['compilation_status'] == 'OK' else 'Erreurs detectees'}
+</p>
 
-        <div class="stats-grid">
-            {stats}
-        </div>
+<div class="stats">
+{stats}
+</div>
 
-        <div class="section">
-            <h2>Diagnostics</h2>
-            {diagnostics_html}
-        </div>
+<div class="section">
+<h2>Diagnostics</h2>
+{diagnostics_html}
+</div>
 
-        <div class="section">
-            <h2>Graphe de dependances</h2>
-            <div class="graph-container">
-                {dot_graph}
-            </div>
-        </div>
+<div class="section">
+<h2>Graphe de dependances</h2>
+{dot_graph}
+</div>
 
-        <div class="section">
-            <h2>Quetes</h2>
-            {quests_html}
-        </div>
+<div class="section">
+<h2>Quetes</h2>
+{quests_html}
+</div>
 
-        <div class="section">
-            <h2>Items</h2>
-            {items_html}
-        </div>
+<div class="section">
+<h2>Items</h2>
+{items_html}
+</div>
 
-        <div class="section">
-            <h2>Personnages non-joueurs</h2>
-            {npcs_html}
-        </div>
+<div class="section">
+<h2>Personnages non-joueurs</h2>
+{npcs_html}
+</div>
 
-        <div class="section">
-            <h2>Representation intermediaire (IR)</h2>
-            <pre class="code-block">{html_module.escape(json.dumps(ir, indent=2, ensure_ascii=False, default=str))}</pre>
-        </div>
+<div class="section">
+<h2>Representation intermediaire (IR)</h2>
+<pre>{html_module.escape(json.dumps(ir, indent=2, ensure_ascii=False, default=str))}</pre>
+</div>
 
-        <footer>
-            QuestLang Compiler v2.0 - Projet de Techniques de Compilation 2024-2025
-        </footer>
-    </div>
 </body>
-</html>"""
+</html>
+"""
 
     def _gen_world(self):
         """Genere la partie world de l'IR."""
@@ -396,16 +271,17 @@ class CodeGenerator:
         html = ""
         for label, value in cards:
             html += f"""
-            <div class="stat-card">
-                <div class="number">{value}</div>
-                <div class="label">{label}</div>
-            </div>"""
+<div class="stat-card">
+    <div class="stat-label">{label}</div>
+    <div class="stat-value">{value}</div>
+</div>
+"""
         return html
 
     def _build_diagnostics_html(self):
         """Construit la section diagnostics en HTML."""
         if not any([self.diagnostics["errors"], self.diagnostics["warnings"], self.diagnostics["infos"]]):
-            return '<p style="color: var(--text-secondary);">Aucun diagnostic a afficher.</p>'
+            return '<p class="success">Aucun diagnostic a afficher.</p>'
 
         html = ""
         for d in self.diagnostics["errors"]:
@@ -419,27 +295,27 @@ class CodeGenerator:
     def _diag_to_html(self, d, severity):
         loc = f"ligne {d.get('line', '?')}, col {d.get('column', '?')}" if d.get('line') else ""
         return f"""
-        <div class="diagnostic {severity}">
-            <span class="code">[{d['code']}]</span>
-            <span class="msg">{html_module.escape(d['message'])}</span>
-            <span class="loc">{loc}</span>
-        </div>"""
+<div class="{severity}">
+    <strong>[{d['code']}]</strong> {html_module.escape(d['message'])}
+    <span style="color:#6a6a8a">{loc}</span>
+</div>
+"""
 
     def _build_quests_html(self):
         """Construit la section quetes en HTML."""
         if not self.program.quests:
-            return '<p style="color: var(--text-secondary);">Aucune quete definie.</p>'
+            return '<p>Aucune quete definie.</p>'
 
         html = ""
         for name, quest in self.program.quests.items():
             classes = "quest-card"
-            badges = '<span class="badge normal">Quete</span>'
+            badges = '<span class="badge">Quete</span>'
             if quest.is_start:
                 classes += " start"
-                badges = '<span class="badge start">DEPART</span>' + badges
+                badges = '<span class="badge badge-start">DEPART</span>' + badges
             if quest.is_final:
                 classes += " final"
-                badges = '<span class="badge final">FINALE</span>' + badges
+                badges = '<span class="badge badge-final">FINALE</span>' + badges
 
             title = quest.properties.get("title")
             title_str = self._expr_to_string(title) if title else name
@@ -459,22 +335,23 @@ class CodeGenerator:
                 requires_html = f'<p><strong>Requiert:</strong> {", ".join(requires.ids)}</p>'
 
             html += f"""
-            <div class="{classes}">
-                <h3>{html_module.escape(title_str)} <span style="font-size:0.7em;color:var(--text-secondary)">({name})</span></h3>
-                {badges}
-                <p style="color:var(--text-secondary);margin:10px 0;">{html_module.escape(desc_str)}</p>
-                {requires_html}
-                {rewards_html}
-                {costs_html}
-                {unlocks_html}
-                <p style="font-size:0.8em;color:var(--text-secondary);margin-top:10px;">Ligne {quest.line}</p>
-            </div>"""
+<div class="{classes}">
+    <h3>{html_module.escape(title_str)} ({name})</h3>
+    {badges}
+    <p>{html_module.escape(desc_str)}</p>
+    {requires_html}
+    {rewards_html}
+    {costs_html}
+    {unlocks_html}
+    <p style="color:#6a6a8a;font-size:11px">Ligne {quest.line}</p>
+</div>
+"""
         return html
 
     def _build_items_html(self):
         """Construit la section items en HTML."""
         if not self.program.items:
-            return '<p style="color: var(--text-secondary);">Aucun item defini.</p>'
+            return '<p>Aucun item defini.</p>'
 
         html = ""
         for name, item in self.program.items.items():
@@ -486,18 +363,17 @@ class CodeGenerator:
             stackable = item.properties.get("stackable", False)
 
             html += f"""
-            <div class="item-card">
-                <strong>{html_module.escape(title_str)}</strong> <span style="color:var(--text-secondary)">({name})</span>
-                <p style="font-size:0.9em;color:var(--text-secondary);">
-                    Type: {itype} | {value_str} | Empilable: {'Oui' if stackable else 'Non'}
-                </p>
-            </div>"""
+<div class="quest-card">
+    <p><strong>{html_module.escape(title_str)}</strong> ({name})</p>
+    <p>Type: {itype} | {value_str} | Empilable: {'Oui' if stackable else 'Non'}</p>
+</div>
+"""
         return html
 
     def _build_npcs_html(self):
         """Construit la section PNJ en HTML."""
         if not self.program.npcs:
-            return '<p style="color: var(--text-secondary);">Aucun PNJ defini.</p>'
+            return '<p>Aucun PNJ defini.</p>'
 
         html = ""
         for name, npc in self.program.npcs.items():
@@ -510,12 +386,11 @@ class CodeGenerator:
                 gives_str = f"Donne les quetes: {', '.join(gives.ids)}"
 
             html += f"""
-            <div class="npc-card">
-                <strong>{html_module.escape(title_str)}</strong> <span style="color:var(--text-secondary)">({name})</span>
-                <p style="font-size:0.9em;color:var(--text-secondary);">
-                    Lieu: {location} | {gives_str}
-                </p>
-            </div>"""
+<div class="quest-card">
+    <p><strong>{html_module.escape(title_str)}</strong> ({name})</p>
+    <p>Lieu: {location} | {gives_str}</p>
+</div>
+"""
         return html
 
     def _build_dot_graph(self):
@@ -549,8 +424,7 @@ class CodeGenerator:
                         x1, y1 = positions[qname]
                         x2, y2 = positions[target]
                         svg_elements.append(
-                            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
-                            f'stroke="#e94560" stroke-width="2" marker-end="url(#arrowhead)" />'
+                            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#c9a84c" stroke-width="2" marker-end="url(#arrowhead)" />'
                         )
 
         # Noeuds
@@ -558,22 +432,24 @@ class CodeGenerator:
             quest = self.program.quests[qname]
             color = "#16c79a" if quest.is_start else ("#f4a261" if quest.is_final else "#0f3460")
             svg_elements.append(
-                f'<circle cx="{x}" cy="{y}" r="30" fill="{color}" stroke="#eaeaea" stroke-width="2" />'
+                f'<circle cx="{x}" cy="{y}" r="30" fill="{color}" stroke="#c9a84c" stroke-width="2" />'
             )
             svg_elements.append(
-                f'<text x="{x}" y="{y+5}" text-anchor="middle" fill="#fff" font-size="11" font-family="sans-serif">{qname[:8]}</text>'
+                f'<text x="{x}" y="{y + 5}" text-anchor="middle" fill="#fff" font-size="12">{qname[:8]}</text>'
             )
 
         svg_content = "\n".join(svg_elements)
 
-        return f"""<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#e94560" />
-                </marker>
-            </defs>
-            {svg_content}
-        </svg>"""
+        return f"""
+<svg width="400" height="400" style="background:#0e0e18;border-radius:8px;">
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#c9a84c" />
+        </marker>
+    </defs>
+    {svg_content}
+</svg>
+"""
 
     def _rewards_to_html(self, rewards, label):
         """Convertit une liste de recompenses en HTML."""
@@ -584,13 +460,13 @@ class CodeGenerator:
         for r in rewards.rewards:
             if r.resource_type == "gold":
                 amount = self._expr_to_string(r.amount) if r.amount else "?"
-                tags += f'<span class="resource-tag gold">{amount} or</span>'
+                tags += f'<span class="tag tag-gold">{amount} or</span>'
             elif r.resource_type == "xp":
                 amount = self._expr_to_string(r.amount) if r.amount else "?"
-                tags += f'<span class="resource-tag xp">{amount} XP</span>'
+                tags += f'<span class="tag tag-xp">{amount} XP</span>'
             elif r.resource_type == "item":
                 qty = self._expr_to_string(r.quantity) if r.quantity else "1"
-                tags += f'<span class="resource-tag item">{qty}x {r.name}</span>'
+                tags += f'<span class="tag tag-item">{qty}x {r.name}</span>'
 
         return f'<p><strong>{label}:</strong> {tags}</p>'
 
