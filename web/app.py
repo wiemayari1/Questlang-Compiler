@@ -30,27 +30,17 @@ EXAMPLES = {
 }
 
 def get_modules():
-    """Charge les modules src/ via importlib (robuste, pas besoin de __init__.py)."""
+    """Retourne les modules du compilateur."""
     try:
-        root = Path(__file__).parent.parent
-        modules = {}
-        for name, path in [
-            ('lexer', root / 'src' / 'lexer.py'),
-            ('parser', root / 'src' / 'parser.py'),
-            ('semantic', root / 'src' / 'semantic.py'),
-            ('codegen', root / 'src' / 'codegen.py'),
-        ]:
-            if not path.exists():
-                return {"error": f"Fichier manquant: {path}", "traceback": ""}
-            spec = importlib.util.spec_from_file_location(name, path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            modules[name] = mod
+        from lexer import Lexer
+        from parser import Parser
+        from semantic import SemanticAnalyzer
+        from codegen import CodeGenerator
         return {
-            'lexer': modules['lexer'].Lexer,
-            'parser': modules['parser'].Parser,
-            'semantic': modules['semantic'].SemanticAnalyzer,
-            'codegen': modules['codegen'].CodeGenerator,
+            'lexer': Lexer,
+            'parser': Parser,
+            'semantic': SemanticAnalyzer,
+            'codegen': CodeGenerator,
         }
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}

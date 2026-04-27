@@ -476,7 +476,7 @@ if __name__ == "__main__":
     if result.wasSuccessful():
         print("  TOUS LES TESTS ONT REUSSI")
     else:
-        print(f"  ECHECS: {len(result.failures) + len(result.errors)}")
+        print("  ECHECS: {}".format(len(result.failures) + len(result.errors)))
     print("=" * 60)
 
     sys.exit(0 if result.wasSuccessful() else 1)

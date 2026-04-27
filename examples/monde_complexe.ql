@@ -8,7 +8,7 @@ quest quete_village {
     title: "Le Village en Detresse";
     desc: "Des gobelins attaquent le village.";
     unlocks: quete_foret, quete_mine;
-    rewards: xp 50, gold 20;
+    rewards: xp 50, gold 20, 3 torche;
 }
 
 quest quete_foret {

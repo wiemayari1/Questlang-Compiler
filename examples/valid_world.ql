@@ -16,7 +16,7 @@ world valdris {
 quest prologue {
     title: "L'appel aux armes";
     desc: "Le roi Aldric convoque tous les aventuriers pour defendre le royaume.";
-    rewards: xp 100, gold 20;
+    rewards: xp 100, gold 20, 3 potion_soin;
     unlocks: premiere_mission, renforcement_arme;
 }
 
