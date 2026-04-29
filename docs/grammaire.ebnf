@@ -1,0 +1,9 @@
+# Grammar for QuestLang
+
+this is the formal EBNF grammar.
+
+<start> ::= <expression>
+<expression> ::= <term> (('+' | '-') <term>)*
+<term> ::= <factor> (('*' | '/') <factor>)*
+<factor> ::= <number> | '(' <expression> ')'
+<number> ::= [0-9]+
