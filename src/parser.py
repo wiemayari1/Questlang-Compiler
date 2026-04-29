@@ -17,7 +17,7 @@ class Parser:
             token = self.current()
         err = QLSyntaxError(message, token.line, token.column, self.filename)
         self.errors.append(err)
-        return err
+        raise err  # CORRECTION : on leve immediatement pour bloquer le pipeline
 
     def current(self):
         if self.pos >= len(self.tokens):
@@ -37,8 +37,6 @@ class Parser:
         token = self.current()
         if expected_type and token.type != expected_type:
             self.error(f"Attendu {expected_type.name}, trouve {token.type.name}")
-            self.pos += 1  # FIX: Increment position even on error to prevent infinite loop
-            return token
         self.pos += 1
         return token
 
@@ -79,6 +77,8 @@ class Parser:
                     continue
                 if decl:
                     declarations.append(decl)
+            except QLSyntaxError:
+                raise  # On propage pour que le CLI s'arrete
             except Exception as e:
                 self.error(f"Erreur: {str(e)}")
                 self.synchronize()

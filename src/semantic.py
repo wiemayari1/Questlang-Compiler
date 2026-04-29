@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Analyse semantique pour QuestLang v2.
-4 passes d'analyse :
+5 passes d'analyse :
+ 0. Type checking (types des expressions, conditions, indexations)
  1. Table des symboles (symboles, doublons, references indefinies)
  2. Accessibilite (DFS depuis start_quest)
  3. Economie (analyse de flux d'items/or)
@@ -9,37 +10,31 @@ Analyse semantique pour QuestLang v2.
 """
 
 import sys
-# FIX #6: Augmenter la limite de recursion pour Tarjan SCC sur les grands graphes
 sys.setrecursionlimit(10000)
 
-from collections import defaultdict, deque
+from collections import defaultdict
 from typing import List, Dict, Set, Tuple, Optional
 from ast_nodes import *
 from errors import SemanticError, ErrorReporter
 
 class SymbolTable:
-    """Table des symboles pour toutes les entites du monde."""
     def __init__(self):
         self.quests: Dict[str, QuestNode] = {}
         self.items: Dict[str, ItemNode] = {}
         self.npcs: Dict[str, NPCNode] = {}
         self.functions: Dict[str, FunctionNode] = {}
-        self.variables: Dict[str, VarDeclNode] = {}  # Variables globales (world-level)
+        self.variables: Dict[str, VarDeclNode] = {}
         self.world: Optional[WorldNode] = None
-        # FIX #4: Support de la portee locale pour les variables de script/fonction
         self.scope_stack: List[Dict[str, VarDeclNode]] = []
 
     def push_scope(self):
-        """Ajoute un nouveau niveau de portee locale."""
         self.scope_stack.append({})
 
     def pop_scope(self):
-        """Retire le niveau de portee locale actuel."""
         if self.scope_stack:
             self.scope_stack.pop()
 
     def add_variable(self, var: VarDeclNode):
-        """Ajoute une variable globale (niveau world)."""
         if var.name in self.variables:
             raise SemanticError(
                 f"Variable '{var.name}' deja definie",
@@ -48,9 +43,7 @@ class SymbolTable:
         self.variables[var.name] = var
 
     def add_local_variable(self, var: VarDeclNode):
-        """Ajoute une variable dans la portee locale actuelle (script/fonction)."""
         if self.scope_stack:
-            # Portee locale active
             current_scope = self.scope_stack[-1]
             if var.name in current_scope:
                 raise SemanticError(
@@ -59,19 +52,15 @@ class SymbolTable:
                 )
             current_scope[var.name] = var
         else:
-            # Pas de portee locale, ajouter globalement (compatibilite)
             self.add_variable(var)
 
     def has_variable(self, name: str) -> bool:
-        """Verifie si une variable existe (globale ou dans les portees locales actives)."""
-        # Chercher dans les portees locales (de la plus interne a la plus externe)
         for scope in reversed(self.scope_stack):
             if name in scope:
                 return True
         return name in self.variables
 
     def get_variable(self, name: str) -> Optional[VarDeclNode]:
-        """Retourne une variable si elle existe."""
         for scope in reversed(self.scope_stack):
             if name in scope:
                 return scope[name]
@@ -125,27 +114,25 @@ class SymbolTable:
     def has_function(self, name: str) -> bool:
         return name in self.functions
 
-class SemanticAnalyzer:
-    """
-    Analyseur semantique a 4 passes.
-    Chaque passe detecte une categorie specifique d'erreurs.
-    """
 
+class SemanticAnalyzer:
     def __init__(self):
         self.symbol_table = SymbolTable()
         self.reporter = ErrorReporter()
         self.program: Optional[ProgramNode] = None
 
     def analyze(self, program: ProgramNode) -> bool:
-        """Execute les 4 passes d'analyse semantique."""
         self.program = program
         self.reporter = ErrorReporter()
         self.symbol_table = SymbolTable()
 
+        # Passe 0: Type checking (NOUVEAU)
+        self.pass0_typecheck()
+
         # Passe 1: Table des symboles
         self.pass1_symbols()
 
-        # Passe 2: Accessibilite (toujours executee pour collecter max d'erreurs)
+        # Passe 2: Accessibilite
         self.pass2_reachability()
 
         # Passe 3: Economie
@@ -157,14 +144,237 @@ class SemanticAnalyzer:
         return not self.reporter.has_errors()
 
     # ============================================================
+    # PASSE 0: TYPE CHECKING (NOUVEAU)
+    # ============================================================
+    def pass0_typecheck(self):
+        """Verifie la coherence des types dans les expressions et instructions."""
+        for decl in self.program.declarations:
+            if isinstance(decl, WorldNode):
+                for var in decl.variables:
+                    self._check_var_types(var)
+            elif isinstance(decl, QuestNode):
+                if decl.script:
+                    self._check_block_types(decl.script, decl.name)
+            elif isinstance(decl, FunctionNode):
+                if decl.body:
+                    self.symbol_table.push_scope()
+                    for param in decl.params:
+                        param_node = VarDeclNode(param, LiteralNode(None, decl.line, decl.column), None, decl.line, decl.column)
+                        try:
+                            self.symbol_table.add_local_variable(param_node)
+                        except SemanticError:
+                            pass
+                    self._check_block_types(decl.body, decl.name)
+                    self.symbol_table.pop_scope()
+
+    def _check_var_types(self, var: VarDeclNode):
+        if var.init_expr:
+            expr_type = self._infer_type(var.init_expr)
+            # On pourrait stocker le type ici si on avait un systeme de types explicite
+
+    def _check_block_types(self, block: BlockNode, context: str):
+        self.symbol_table.push_scope()
+        for stmt in block.statements:
+            self._check_stmt_types(stmt, context)
+        self.symbol_table.pop_scope()
+
+    def _check_stmt_types(self, stmt, context: str):
+        if isinstance(stmt, VarDeclNode):
+            if stmt.init_expr:
+                init_type = self._infer_type(stmt.init_expr)
+                # Stockage implicite du type
+                stmt.var_type = init_type
+            try:
+                self.symbol_table.add_local_variable(stmt)
+            except SemanticError as e:
+                self.reporter.add_error("DUPLICATE_VAR", e.message, e.line, e.column)
+        elif isinstance(stmt, AssignNode):
+            target_type = self._infer_type(stmt.target)
+            value_type = self._infer_type(stmt.value)
+            if target_type != "unknown" and value_type != "unknown" and target_type != value_type:
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Affectation de type '{value_type}' a une cible de type '{target_type}'",
+                    stmt.line, stmt.column
+                )
+        elif isinstance(stmt, CompoundAssignNode):
+            target_type = self._infer_type(stmt.target)
+            value_type = self._infer_type(stmt.value)
+            if stmt.op in ('+=', '-='):
+                if target_type not in ('int', 'float', 'unknown'):
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operation '{stmt.op}' impossible sur le type '{target_type}'",
+                        stmt.line, stmt.column
+                    )
+                if value_type not in ('int', 'float', 'unknown'):
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operation '{stmt.op}' avec une valeur de type '{value_type}'",
+                        stmt.line, stmt.column
+                    )
+        elif isinstance(stmt, IfNode):
+            cond_type = self._infer_type(stmt.condition)
+            if cond_type != "bool" and cond_type != "unknown":
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Condition 'if' doit etre de type 'bool', trouve '{cond_type}'",
+                    stmt.line, stmt.column
+                )
+            self._check_block_types(stmt.then_block, context)
+            if stmt.else_block:
+                self._check_block_types(stmt.else_block, context)
+        elif isinstance(stmt, WhileNode):
+            cond_type = self._infer_type(stmt.condition)
+            if cond_type != "bool" and cond_type != "unknown":
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Condition 'while' doit etre de type 'bool', trouve '{cond_type}'",
+                    stmt.line, stmt.column
+                )
+            self._check_block_types(stmt.body, context)
+        elif isinstance(stmt, ForNode):
+            iterable_type = self._infer_type(stmt.iterable)
+            if iterable_type != "list" and iterable_type != "unknown":
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Iteration 'for' requiert une liste, trouve '{iterable_type}'",
+                    stmt.line, stmt.column
+                )
+            self.symbol_table.push_scope()
+            loop_var = VarDeclNode(stmt.var_name, LiteralNode(None, stmt.line, stmt.column), None, stmt.line, stmt.column)
+            try:
+                self.symbol_table.add_local_variable(loop_var)
+            except SemanticError:
+                pass
+            self._check_block_types(stmt.body, context)
+            self.symbol_table.pop_scope()
+        elif isinstance(stmt, ReturnNode):
+            if stmt.value:
+                self._infer_type(stmt.value)
+        elif isinstance(stmt, GiveStmtNode):
+            for r in stmt.rewards if isinstance(stmt.rewards, list) else []:
+                self._infer_type(r)
+        elif isinstance(stmt, TakeStmtNode):
+            for r in stmt.rewards if isinstance(stmt.rewards, list) else []:
+                self._infer_type(r)
+        elif isinstance(stmt, CallStmtNode):
+            call = stmt.call_expr
+            for arg in call.args:
+                self._infer_type(arg)
+        elif isinstance(stmt, BlockNode):
+            self._check_block_types(stmt, context)
+
+    def _infer_type(self, expr) -> str:
+        """Infere le type d'une expression. Retourne 'int', 'float', 'bool', 'string', 'list', ou 'unknown'."""
+        if isinstance(expr, LiteralNode):
+            if isinstance(expr.value, bool):
+                return "bool"
+            elif isinstance(expr.value, int):
+                return "int"
+            elif isinstance(expr.value, float):
+                return "float"
+            elif isinstance(expr.value, str):
+                return "string"
+            return "unknown"
+        elif isinstance(expr, IdentifierNode):
+            var = self.symbol_table.get_variable(expr.name)
+            if var and var.var_type:
+                return var.var_type
+            # Identifiants speciaux
+            if expr.name in ('true', 'false'):
+                return "bool"
+            if expr.name in ('xp', 'gold'):
+                return "int"
+            return "unknown"
+        elif isinstance(expr, BinaryOpNode):
+            left_type = self._infer_type(expr.left)
+            right_type = self._infer_type(expr.right)
+            if expr.op in ('and', 'or'):
+                if left_type != "bool" and left_type != "unknown":
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur '{expr.op}' requiert 'bool', trouve '{left_type}'",
+                        expr.left.line, expr.left.column
+                    )
+                if right_type != "bool" and right_type != "unknown":
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur '{expr.op}' requiert 'bool', trouve '{right_type}'",
+                        expr.right.line, expr.right.column
+                    )
+                return "bool"
+            elif expr.op in ('==', '!=', '<', '>', '<=', '>='):
+                return "bool"
+            elif expr.op in ('+', '-', '*', '/', '%', '^'):
+                if left_type not in ('int', 'float', 'unknown'):
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur '{expr.op}' impossible sur le type '{left_type}'",
+                        expr.left.line, expr.left.column
+                    )
+                if right_type not in ('int', 'float', 'unknown'):
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur '{expr.op}' impossible sur le type '{right_type}'",
+                        expr.right.line, expr.right.column
+                    )
+                if left_type == "float" or right_type == "float":
+                    return "float"
+                return "int"
+        elif isinstance(expr, UnaryOpNode):
+            operand_type = self._infer_type(expr.operand)
+            if expr.op == 'not':
+                if operand_type != "bool" and operand_type != "unknown":
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur 'not' requiert 'bool', trouve '{operand_type}'",
+                        expr.operand.line, expr.operand.column
+                    )
+                return "bool"
+            elif expr.op == '-':
+                if operand_type not in ('int', 'float', 'unknown'):
+                    self.reporter.add_error(
+                        "TYPE_MISMATCH",
+                        f"Operateur '-' unaire requiert un nombre, trouve '{operand_type}'",
+                        expr.operand.line, expr.operand.column
+                    )
+                return operand_type
+        elif isinstance(expr, ListLiteralNode):
+            return "list"
+        elif isinstance(expr, IndexNode):
+            target_type = self._infer_type(expr.target)
+            index_type = self._infer_type(expr.index)
+            if target_type != "list" and target_type != "unknown":
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Indexation impossible sur le type '{target_type}'",
+                    expr.target.line, expr.target.column
+                )
+            if index_type not in ('int', 'unknown'):
+                self.reporter.add_error(
+                    "TYPE_MISMATCH",
+                    f"Index doit etre 'int', trouve '{index_type}'",
+                    expr.index.line, expr.index.column
+                )
+            return "unknown"  # Type de l'element inconnu sans analyse plus poussee
+        elif isinstance(expr, CallExprNode):
+            # Sans signature de fonction, on ne peut pas inferer le type de retour
+            for arg in expr.args:
+                self._infer_type(arg)
+            return "unknown"
+        elif isinstance(expr, ResourceNode):
+            if expr.amount:
+                self._infer_type(expr.amount)
+            if expr.quantity:
+                self._infer_type(expr.quantity)
+            return "int" if expr.resource_type in ('xp', 'gold') else "unknown"
+        return "unknown"
+
+    # ============================================================
     # PASSE 1: TABLE DES SYMBOLES
     # ============================================================
     def pass1_symbols(self):
-        """
-        Passe 1: Construction de la table des symboles.
-        Detecte: doublons, references indefinies, types manquants.
-        """
-        # Enregistrer les declarations globales
         for decl in self.program.declarations:
             if isinstance(decl, WorldNode):
                 if self.symbol_table.world is not None:
@@ -175,12 +385,11 @@ class SemanticAnalyzer:
                     )
                 else:
                     self.symbol_table.world = decl
-                # Variables globales du world
-                for var in decl.variables:
-                    try:
-                        self.symbol_table.add_variable(var)
-                    except SemanticError as e:
-                        self.reporter.add_error("DUPLICATE_VAR", e.message, e.line, e.column)
+                    for var in decl.variables:
+                        try:
+                            self.symbol_table.add_variable(var)
+                        except SemanticError as e:
+                            self.reporter.add_error("DUPLICATE_VAR", e.message, e.line, e.column)
 
             elif isinstance(decl, QuestNode):
                 try:
@@ -206,7 +415,6 @@ class SemanticAnalyzer:
                 except SemanticError as e:
                     self.reporter.add_error("DUPLICATE_FUNC", e.message, e.line, e.column)
 
-        # Verifier les references
         for decl in self.program.declarations:
             if isinstance(decl, WorldNode):
                 self._check_world_refs(decl)
@@ -217,13 +425,11 @@ class SemanticAnalyzer:
             elif isinstance(decl, FunctionNode):
                 self._check_function_body(decl)
 
-        # Verifier les items non declares dans les recompenses/couts
         for decl in self.program.declarations:
             if isinstance(decl, QuestNode):
                 self._check_item_refs_in_quest(decl)
 
     def _check_world_refs(self, world: WorldNode):
-        """Verifie que start_quest et win_condition existent."""
         if "start" in world.properties:
             start_val = self._extract_string(world.properties["start"])
             if start_val and not self.symbol_table.has_quest(start_val):
@@ -243,10 +449,7 @@ class SemanticAnalyzer:
                 )
 
     def _check_quest_refs(self, quest: QuestNode):
-        """Verifie les references dans une quete."""
         props = quest.properties
-
-        # requires -> quetes existantes
         if "requires" in props and isinstance(props["requires"], IdListNode):
             for qname in props["requires"].ids:
                 if not self.symbol_table.has_quest(qname):
@@ -256,7 +459,6 @@ class SemanticAnalyzer:
                         quest.line, quest.column
                     )
 
-        # unlocks -> quetes existantes
         if "unlocks" in props and isinstance(props["unlocks"], IdListNode):
             for qname in props["unlocks"].ids:
                 if not self.symbol_table.has_quest(qname):
@@ -266,14 +468,12 @@ class SemanticAnalyzer:
                         quest.line, quest.column
                     )
 
-        # Verifier le script avec portee locale
         if quest.script:
             self.symbol_table.push_scope()
             self._check_script_refs(quest.script, quest.name)
             self.symbol_table.pop_scope()
 
     def _check_npc_refs(self, npc: NPCNode):
-        """Verifie que les quetes donnees par le PNJ existent."""
         props = npc.properties
         if "gives_quest" in props and isinstance(props["gives_quest"], IdListNode):
             for qname in props["gives_quest"].ids:
@@ -285,7 +485,6 @@ class SemanticAnalyzer:
                     )
 
     def _check_item_refs_in_quest(self, quest: QuestNode):
-        """Verifie que les items dans rewards/couts existent."""
         for key in ["rewards", "costs"]:
             if key in quest.properties:
                 rewards = quest.properties[key]
@@ -299,33 +498,27 @@ class SemanticAnalyzer:
                             )
 
     def _check_function_body(self, func: FunctionNode):
-        """Verifie les references dans le corps d'une fonction avec portee locale."""
         if func.body:
             self.symbol_table.push_scope()
-            # Ajouter les parametres comme variables locales
             for param in func.params:
                 param_node = VarDeclNode(param, LiteralNode(None, func.line, func.column), None, func.line, func.column)
                 try:
                     self.symbol_table.add_local_variable(param_node)
                 except SemanticError:
-                    pass  # Parametre duplique deja signale par le parser
+                    pass
             self._check_script_refs(func.body, func.name)
             self.symbol_table.pop_scope()
 
     def _check_script_refs(self, block: BlockNode, context: str):
-        """Verifie les references dans un bloc d'instructions."""
         for stmt in block.statements:
             self._check_stmt_refs(stmt, context)
 
     def _check_stmt_refs(self, stmt, context: str):
-        """Verifie les references dans une instruction."""
         if isinstance(stmt, VarDeclNode):
-            # FIX #4: Ajouter la variable dans la portee locale, pas globale
             try:
                 self.symbol_table.add_local_variable(stmt)
             except SemanticError as e:
                 self.reporter.add_error("DUPLICATE_VAR", e.message, e.line, e.column)
-            # Verifier aussi l'expression d'initialisation
             if stmt.init_expr:
                 self._check_expr_refs(stmt.init_expr, context)
         elif isinstance(stmt, AssignNode):
@@ -361,7 +554,6 @@ class SemanticAnalyzer:
         elif isinstance(stmt, ForNode):
             self._check_expr_refs(stmt.iterable, context)
             self.symbol_table.push_scope()
-            # Ajouter la variable de boucle
             loop_var = VarDeclNode(stmt.var_name, LiteralNode(None, stmt.line, stmt.column), None, stmt.line, stmt.column)
             try:
                 self.symbol_table.add_local_variable(loop_var)
@@ -384,10 +576,7 @@ class SemanticAnalyzer:
             self.symbol_table.pop_scope()
 
     def _check_expr_refs(self, expr, context: str):
-        """Verifie les references dans une expression."""
         if isinstance(expr, IdentifierNode):
-            # BONUS 3: Verifier si l'identifiant est une variable declaree
-            # On ignore les mots-cles speciaux (xp, gold sont des ressources, pas des variables)
             reserved_names = {'xp', 'gold', 'true', 'false'}
             if (not self.symbol_table.has_variable(expr.name) and
                 expr.name not in reserved_names and
@@ -395,7 +584,6 @@ class SemanticAnalyzer:
                 not self.symbol_table.has_item(expr.name) and
                 not self.symbol_table.has_npc(expr.name) and
                 not self.symbol_table.has_function(expr.name)):
-                # Variable non declaree utilisee dans une expression
                 self.reporter.add_error(
                     "UNDECLARED_VAR",
                     f"Variable '{expr.name}' utilisee mais non declaree dans '{context}'",
@@ -430,7 +618,6 @@ class SemanticAnalyzer:
                 self._check_expr_refs(expr.quantity, context)
 
     def _extract_string(self, node):
-        """Extrait une valeur string d'un noeud AST."""
         if isinstance(node, LiteralNode) and isinstance(node.value, str):
             return node.value
         if isinstance(node, IdentifierNode):
@@ -441,11 +628,6 @@ class SemanticAnalyzer:
     # PASSE 2: ACCESSIBILITE (DFS)
     # ============================================================
     def pass2_reachability(self):
-        """
-        Passe 2: Accessibilite des quetes depuis start_quest.
-        Algorithme: DFS iteratif. Complexite O(V + E).
-        Detecte: quetes inaccessibles, fin inaccessible.
-        """
         if not self.symbol_table.world:
             self.reporter.add_warning(
                 "NO_WORLD",
@@ -465,7 +647,6 @@ class SemanticAnalyzer:
             win_condition = self._extract_string(world.properties["win_condition"])
 
         if not start_quest:
-            # Si pas de start explicite, prendre la premiere quete
             if self.symbol_table.quests:
                 start_quest = list(self.symbol_table.quests.keys())[0]
                 self.reporter.add_info(
@@ -481,9 +662,8 @@ class SemanticAnalyzer:
                 return
 
         if not self.symbol_table.has_quest(start_quest):
-            return  # Deja signale en passe 1
+            return
 
-        # DFS iteratif
         visited = set()
         stack = [start_quest]
 
@@ -492,18 +672,14 @@ class SemanticAnalyzer:
             if qname in visited:
                 continue
             visited.add(qname)
-
             quest = self.symbol_table.quests.get(qname)
             if not quest:
                 continue
-
-            # Ajouter les quetes debloquees
             if "unlocks" in quest.properties and isinstance(quest.properties["unlocks"], IdListNode):
                 for next_q in quest.properties["unlocks"].ids:
                     if next_q not in visited:
                         stack.append(next_q)
 
-        # Quetes inaccessibles
         for qname in self.symbol_table.quests:
             if qname not in visited:
                 quest = self.symbol_table.quests[qname]
@@ -513,7 +689,6 @@ class SemanticAnalyzer:
                     quest.line, quest.column
                 )
 
-        # Verifier accessibilite de la condition de victoire
         if win_condition and win_condition not in visited:
             self.reporter.add_error(
                 "WIN_UNREACHABLE",
@@ -526,7 +701,6 @@ class SemanticAnalyzer:
                 f"La condition de victoire '{win_condition}' est atteignable"
             )
 
-        # Quetes accessibles sans recompense
         for qname in visited:
             quest = self.symbol_table.quests.get(qname)
             if quest:
@@ -546,17 +720,12 @@ class SemanticAnalyzer:
     # PASSE 3: ECONOMIE (ANALYSE DE FLUX)
     # ============================================================
     def pass3_economy(self):
-        """
-        Passe 3: Analyse economique du monde.
-        Detecte: inflation/deflation d'or, deficit/surplus d'items.
-        """
-        item_production = defaultdict(float)  # item -> quantite produite
-        item_consumption = defaultdict(float)  # item -> quantite consommee
+        item_production = defaultdict(float)
+        item_consumption = defaultdict(float)
         gold_injected = 0.0
         gold_consumed = 0.0
 
         for qname, quest in self.symbol_table.quests.items():
-            # Recompenses (production)
             if "rewards" in quest.properties:
                 rewards = quest.properties["rewards"]
                 if isinstance(rewards, RewardListNode):
@@ -566,7 +735,6 @@ class SemanticAnalyzer:
                         elif r.resource_type == "item":
                             item_production[r.name] += self._eval_expr(r.quantity)
 
-            # Couts (consommation)
             if "costs" in quest.properties:
                 costs = quest.properties["costs"]
                 if isinstance(costs, RewardListNode):
@@ -576,7 +744,6 @@ class SemanticAnalyzer:
                         elif c.resource_type == "item":
                             item_consumption[c.name] += self._eval_expr(c.quantity)
 
-        # Analyse des items
         all_items = set(item_production.keys()) | set(item_consumption.keys())
         for item_name in all_items:
             produced = item_production[item_name]
@@ -595,7 +762,6 @@ class SemanticAnalyzer:
                     1, 1
                 )
 
-        # Analyse de l'or
         if gold_consumed > 0:
             ratio = gold_injected / gold_consumed
             if ratio > 10:
@@ -612,7 +778,6 @@ class SemanticAnalyzer:
                 )
 
     def _eval_expr(self, node, _visited=None) -> float:
-        """Evalue une expression constante avec protection contre les cycles."""
         if _visited is None:
             _visited = set()
 
@@ -641,7 +806,7 @@ class SemanticAnalyzer:
             if var and var.init_expr:
                 var_id = id(var.init_expr)
                 if var_id in _visited:
-                    return 0.0  # Cycle detecte, retourner 0
+                    return 0.0
                 _visited.add(var_id)
                 return self._eval_expr(var.init_expr, _visited)
             return 0.0
@@ -651,13 +816,6 @@ class SemanticAnalyzer:
     # PASSE 4: CYCLES (TARJAN SCC)
     # ============================================================
     def pass4_cycles(self):
-        """
-        Passe 4: Detection de cycles avec Tarjan SCC.
-        Algorithme de Tarjan pour les composantes fortement connexes.
-        Complexite O(V + E).
-        Detecte: deadlocks narratifs, boucles d'unlock, items morts, PNJ inutiles.
-        """
-        # Construire le graphe de dependances entre quetes
         graph = defaultdict(list)
         for qname, quest in self.symbol_table.quests.items():
             if "requires" in quest.properties and isinstance(quest.properties["requires"], IdListNode):
@@ -665,9 +823,8 @@ class SemanticAnalyzer:
                     graph[qname].append(req)
             if "unlocks" in quest.properties and isinstance(quest.properties["unlocks"], IdListNode):
                 for unlocked in quest.properties["unlocks"].ids:
-                    graph[unlocked].append(qname)  # unlocked depend de qname
+                    graph[unlocked].append(qname)
 
-        # Tarjan SCC
         index_counter = [0]
         stack = []
         lowlinks = {}
@@ -703,12 +860,9 @@ class SemanticAnalyzer:
             if v not in index:
                 strongconnect(v)
 
-        # Analyser les SCC
         for scc in sccs:
             if len(scc) > 1:
-                # Cycle detecte
                 cycle_str = " -> ".join(scc) + " -> " + scc[0]
-                # Verifier si c'est un deadlock (toutes les quetes du cycle se requierent mutuellement)
                 is_deadlock = True
                 for qname in scc:
                     quest = self.symbol_table.quests.get(qname)
@@ -732,7 +886,6 @@ class SemanticAnalyzer:
                         1, 1
                     )
 
-        # Items morts (declares mais jamais utilises)
         used_items = set()
         for qname, quest in self.symbol_table.quests.items():
             for key in ["rewards", "costs"]:
@@ -752,7 +905,6 @@ class SemanticAnalyzer:
                     item.line, item.column
                 )
 
-        # PNJ inutiles (qui ne donnent aucune quete)
         for npc_name, npc in self.symbol_table.npcs.items():
             gives = npc.properties.get("gives_quest")
             if not gives or (isinstance(gives, IdListNode) and not gives.ids):
@@ -763,5 +915,4 @@ class SemanticAnalyzer:
                 )
 
     def get_diagnostics(self):
-        """Retourne les diagnostics collectes."""
         return self.reporter.get_diagnostics()
