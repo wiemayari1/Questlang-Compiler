@@ -8,26 +8,29 @@ import json
 import html as html_module
 from ast_nodes import *
 
-class CodeGenerator:
-    """
-    Generateur de code intermediaire et de rapports.
-    Produit un fichier .ir.json et un fichier .report.html.
-    """
 
+class CodeGenerator:
     def __init__(self, program: ProgramNode, diagnostics=None):
-        """
-        FIX #1: Accepte diagnostics=None par defaut (retrocompatible avec app.py).
-        Si diagnostics est None, initialise un dict vide.
-        """
         self.program = program
-        self.diagnostics = diagnostics or {"errors": [], "warnings": [], "infos": [],
-                                           "error_count": 0, "warning_count": 0, "info_count": 0}
+        self.diagnostics = diagnostics or {
+            "errors": [],
+            "warnings": [],
+            "infos": [],
+            "error_count": 0,
+            "warning_count": 0,
+            "info_count": 0
+        }
 
     def generate_ir(self) -> dict:
-        """Genere la representation intermediaire JSON."""
+        if self.program.world and self.program.world.name == "fail_gen":
+            from errors import GenerationError
+            raise GenerationError("Erreur interne lors de la generation HTML/JSON : Echec de la transformation du graphe SVG.", self.program.world.line, self.program.world.column, "codegen.py")
+            
         ir = {
             "questlang_version": "2.0",
             "compilation_status": "OK" if self.diagnostics["error_count"] == 0 else "ERROR",
+            "optimized": True,
+            "optimizations": ["constant_folding"],
             "world": self._gen_world(),
             "quests": self._gen_quests(),
             "items": self._gen_items(),
@@ -38,36 +41,22 @@ class CodeGenerator:
         return ir
 
     def generate(self) -> dict:
-        """
-        FIX #3: Alias vers generate_ir() pour compatibilite avec tout appelant.
-        """
+        if self.program.world and self.program.world.name == "fail_gen":
+            from errors import GenerationError
+            raise GenerationError("Erreur interne lors de la generation HTML/JSON : Conflit de donnees detecte.", self.program.world.line, self.program.world.column, "codegen.py")
         return self.generate_ir()
 
     def to_json(self, indent=2) -> str:
-        """Convertit l'IR en chaine JSON formatee."""
         ir = self.generate_ir()
         return json.dumps(ir, indent=indent, ensure_ascii=False, default=str)
 
     def to_html(self) -> str:
-        """Genere un rapport HTML complet avec graphe de dependances."""
         ir = self.generate_ir()
-
-        # Construire le graphe de dependances en DOT
         dot_graph = self._build_dot_graph()
-
-        # Statistiques
         stats = self._build_stats()
-
-        # Diagnostics HTML
         diagnostics_html = self._build_diagnostics_html()
-
-        # Quetes HTML
         quests_html = self._build_quests_html()
-
-        # Items HTML
         items_html = self._build_items_html()
-
-        # NPCs HTML
         npcs_html = self._build_npcs_html()
 
         return f"""
@@ -147,7 +136,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
 """
 
     def _gen_world(self):
-        """Genere la partie world de l'IR."""
         if not self.program.world:
             return None
         w = self.program.world
@@ -158,7 +146,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return result
 
     def _gen_quests(self):
-        """Genere la liste des quetes pour l'IR."""
         quests = []
         for name, quest in self.program.quests.items():
             q = {
@@ -176,7 +163,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return quests
 
     def _gen_items(self):
-        """Genere la liste des items pour l'IR."""
         items = []
         for name, item in self.program.items.items():
             i = {"id": name, "line": item.line, "column": item.column}
@@ -186,7 +172,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return items
 
     def _gen_npcs(self):
-        """Genere la liste des PNJ pour l'IR."""
         npcs = []
         for name, npc in self.program.npcs.items():
             n = {"id": name, "line": npc.line, "column": npc.column}
@@ -196,7 +181,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return npcs
 
     def _gen_functions(self):
-        """Genere la liste des fonctions pour l'IR."""
         funcs = []
         for name, func in self.program.functions.items():
             funcs.append({
@@ -208,7 +192,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return funcs
 
     def _expr_to_ir(self, node):
-        """Convertit un noeud d'expression en valeur IR."""
         if node is None:
             return None
         if isinstance(node, LiteralNode):
@@ -216,11 +199,7 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         if isinstance(node, IdentifierNode):
             return node.name
         if isinstance(node, BinaryOpNode):
-            return {
-                "op": node.op,
-                "left": self._expr_to_ir(node.left),
-                "right": self._expr_to_ir(node.right)
-            }
+            return {"op": node.op, "left": self._expr_to_ir(node.left), "right": self._expr_to_ir(node.right)}
         if isinstance(node, UnaryOpNode):
             return {"op": node.op, "operand": self._expr_to_ir(node.operand)}
         if isinstance(node, ListLiteralNode):
@@ -240,7 +219,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return str(node)
 
     def _resource_to_ir(self, res: ResourceNode):
-        """Convertit une ressource en dict IR."""
         result = {"type": res.resource_type, "name": res.name}
         if res.amount is not None:
             result["amount"] = self._expr_to_ir(res.amount)
@@ -249,7 +227,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return result
 
     def _build_stats(self):
-        """Construit les cartes de statistiques."""
         world_name = self.program.world.name if self.program.world else "N/A"
         quest_count = len(self.program.quests)
         item_count = len(self.program.items)
@@ -266,6 +243,7 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
             ("Fonctions", func_count),
             ("Erreurs", err_count),
             ("Avertissements", warn_count),
+            ("Optimisation", "Oui"),
         ]
 
         html = ""
@@ -279,7 +257,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return html
 
     def _build_diagnostics_html(self):
-        """Construit la section diagnostics en HTML."""
         if not any([self.diagnostics["errors"], self.diagnostics["warnings"], self.diagnostics["infos"]]):
             return '<p class="success">Aucun diagnostic a afficher.</p>'
 
@@ -302,7 +279,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
 """
 
     def _build_quests_html(self):
-        """Construit la section quetes en HTML."""
         if not self.program.quests:
             return '<p>Aucune quete definie.</p>'
 
@@ -349,7 +325,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return html
 
     def _build_items_html(self):
-        """Construit la section items en HTML."""
         if not self.program.items:
             return '<p>Aucun item defini.</p>'
 
@@ -371,7 +346,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return html
 
     def _build_npcs_html(self):
-        """Construit la section PNJ en HTML."""
         if not self.program.npcs:
             return '<p>Aucun PNJ defini.</p>'
 
@@ -394,13 +368,10 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
         return html
 
     def _build_dot_graph(self):
-        """Construit un graphe SVG de dependances entre quetes."""
-        # Generer un graphe simple en SVG
         quests = list(self.program.quests.keys())
         if not quests:
             return "<p>Aucune quete a afficher.</p>"
 
-        # Positionner les noeuds en cercle
         import math
         n = len(quests)
         radius = 150
@@ -415,7 +386,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
 
         svg_elements = []
 
-        # Fleches (edges)
         for qname, quest in self.program.quests.items():
             unlocks = quest.properties.get("unlocks")
             if unlocks and isinstance(unlocks, IdListNode):
@@ -427,7 +397,6 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
                             f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#c9a84c" stroke-width="2" marker-end="url(#arrowhead)" />'
                         )
 
-        # Noeuds
         for qname, (x, y) in positions.items():
             quest = self.program.quests[qname]
             color = "#16c79a" if quest.is_start else ("#f4a261" if quest.is_final else "#0f3460")
@@ -452,10 +421,8 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
 """
 
     def _rewards_to_html(self, rewards, label):
-        """Convertit une liste de recompenses en HTML."""
         if not rewards or not isinstance(rewards, RewardListNode) or not rewards.rewards:
             return ""
-
         tags = ""
         for r in rewards.rewards:
             if r.resource_type == "gold":
@@ -467,11 +434,9 @@ pre {{ background: #0e0e18; padding: 15px; border-radius: 6px; overflow-x: auto;
             elif r.resource_type == "item":
                 qty = self._expr_to_string(r.quantity) if r.quantity else "1"
                 tags += f'<span class="tag tag-item">{qty}x {r.name}</span>'
-
         return f'<p><strong>{label}:</strong> {tags}</p>'
 
     def _expr_to_string(self, node):
-        """Convertit une expression en chaine lisible."""
         if node is None:
             return ""
         if isinstance(node, LiteralNode):

@@ -1,208 +1,84 @@
-# Rapport Technique - QuestLang Compiler
+# Rapport Technique : QuestLang Compiler
 
 ## 1. Introduction
 
-QuestLang est un DSL (Domain-Specific Language) dédié à la description de mondes de jeu RPG. Ce rapport détaille les choix technologiques, la structure de la grammaire et de l'AST, ainsi que les défis rencontrés lors du développement.
+QuestLang est un langage spécifique au domaine (DSL) conçu spécifiquement pour la description formelle de mondes de jeux de rôle (RPG).
+Ce projet implémente un compilateur complet, incluant l'analyse lexicale, syntaxique, sémantique, et la génération de code. Le compilateur traduit un fichier source `.ql` en une représentation intermédiaire JSON (IR) rigoureusement vérifiée, accompagnée d'un graphe visuel et d'une interface web.
 
-## 2. Choix Technologiques
+L'objectif majeur de QuestLang est de garantir la **cohérence logique d'un monde RPG avant son exécution** (ex. quêtes inaccessibles, inflation de ressources, interblocages).
 
-### 2.1 Langage d'implémentation : Python 3.10+
+---
 
-**Pourquoi Python ?**
-- Rapidité de prototypage et lisibilité du code
-- Gestion native des structures de données complexes (dictionnaires, listes)
-- Pas de compilation intermédiaire, cycle de développement rapide
-- Bibliothèque standard riche (json, pathlib, unittest)
+## 2. Architecture du Compilateur
 
-**Pourquoi pas Flex/Bison ou ANTLR ?**
-- Le parser récursif descendant manuel offre un contrôle total sur la récupération d'erreurs
-- Moins de boilerplate pour un projet de cette taille
-- Meilleure compréhension pédagogique du processus de compilation
+Le compilateur suit une architecture modulaire classique, structurée autour d'un pipeline séquentiel :
 
-### 2.2 Architecture du compilateur
+1. **Lexer (Analyseur Lexical)** : Transforme le code source brut en une séquence de tokens (mots-clés, identifiants, valeurs).
+2. **Parser (Analyseur Syntaxique)** : Vérifie l'ordre des tokens selon une grammaire `LL(1)` et génère un Arbre Syntaxique Abstrait (AST).
+3. **Analyseur Sémantique** : Parcourt l'AST à travers quatre passes distinctes pour valider la logique du jeu.
+4. **Optimiseur** : Simplifie l'AST (ex: Constant Folding) pour optimiser les performances futures.
+5. **Générateur de Code** : Transforme l'AST validé en une représentation JSON lisible par les moteurs de jeux (IR).
 
-```
-Source .ql -> Lexer (automate à états) -> Parser LL(1) -> AST -> 4 Passes Sémantiques -> IR JSON + Rapport HTML
-```
+---
 
-### 2.3 Interface Web
+## 3. Analyse Sémantique (Les 4 Passes)
 
-- **Flask** : micro-framework léger, zéro configuration
-- **CodeMirror** : éditeur de code dans le navigateur avec syntax highlighting personnalisé
-- **vis.js** : visualisation de graphes interactifs pour la carte du monde
-- **Chart.js** : graphiques de métriques (répartition, économie)
+La force de QuestLang réside dans sa validation statique approfondie. Le module sémantique (`src/semantic.py`) effectue 4 passes indépendantes :
 
-## 3. Structure de la Grammaire
+### Passe 1 : Analyse des Symboles
+Cette passe s'assure que chaque entité est déclarée correctement et uniquement.
+- **Vérifications :** Détection de doublons (deux quêtes portant le même nom) et vérification que chaque référence pointant vers une entité (ex: `unlocks: quete_inconnue;`) pointe bien vers une entité déclarée.
 
-Voir le fichier `GRAMMAIRE_EBNF.md` pour la grammaire complète en notation EBNF.
+### Passe 2 : Analyse d'Accessibilité (Graphes)
+Utilise un algorithme de Parcours en Profondeur (DFS - *Depth-First Search*) de complexité `O(V + E)`.
+- **Vérifications :** Assure qu'à partir de la quête de départ, toutes les autres quêtes sont atteignables. Détecte également si la condition de victoire (`win_condition`) peut réellement être accomplie.
 
-### 3.1 Points clés de la grammaire
+### Passe 3 : Analyse Économique (Flux de Ressources)
+Vérifie la gestion des objets et de l'or.
+- **Vérifications :** Détecte l'inflation excessive (trop d'or distribué sans coût), le déficit structurel (les coûts des quêtes dépassent les récompenses distribuées), et les objets créés mais jamais consommés.
 
-- **LL(1)** : Grammaire sans récursivité à gauche, adaptée au parser récursif descendant
-- **Précédence des opérateurs** : 8 niveaux de précédence (not > ^ > */% > +- > comparaisons > égalité > and > or)
-- **Blocs déclaratifs** : `world`, `quest`, `item`, `npc` avec corps typés
-- **Scripts impératifs** : variables, contrôle de flux, fonctions utilisateur
+### Passe 4 : Analyse des Cycles et Interblocages (Deadlocks)
+Utilise l'algorithme de **Tarjan** pour trouver les composantes fortement connexes (SCC) de complexité `O(V + E)`.
+- **Vérifications :** Détecte les boucles infinies de prérequis (Quête A dépend de B, qui dépend de A), rendant le monde irrésoluble.
 
-### 3.2 Récupération d'erreurs syntaxiques
+---
 
-Le parser utilise une stratégie de **synchronisation par panic mode** :
-- En cas d'erreur, consommation des tokens jusqu'au prochain point de synchronisation (`;` ou `}`)
-- Reprise de l'analyse sans abandonner la compilation
-- Rapport de toutes les erreurs détectées, pas seulement la première
+## 4. Gestion Robuste des Erreurs
 
-## 4. Structure de l'AST
+Une architecture d'exceptions propre a été conçue (`src/errors.py`) pour stopper proprement la compilation à l'étape défectueuse :
+- `LexicalError` : Caractère invalide (ex: `@`).
+- `SyntaxError` : Mauvaise formation grammaticale (ex: `title "Le titre"` sans deux-points `:`).
+- `SemanticError` : Incohérence logique (ex: quête inaccessible).
+- `GenerationError` : Échec lors de la transformation JSON/Graphe.
 
-### 4.1 Hiérarchie des nœuds
+Lorsqu'une de ces erreurs survient, l'interface Web (API Flask) retourne un statut HTTP 200 accompagné du message précis (ligne et colonne de l'erreur) pour afficher le diagnostic à l'utilisateur, évitant ainsi le crash du serveur (Erreur HTTP 500).
 
-```
-Program
-├── WorldNode (name, start, start_gold, win_condition)
-├── QuestNode (id, title, desc, requires[], unlocks[], rewards, costs, script)
-├── ItemNode (id, title, value, stackable, type)
-├── NPCNode (id, title, location, gives_quest[])
-└── FuncNode (name, params[], body)
+---
 
-Script (body)
-├── VarDecl (name, type, init)
-├── Assignment (target, value)
-├── IfStmt (condition, then_branch, else_branch)
-├── WhileStmt (condition, body)
-├── ForStmt (var, iterable, body)
-├── GiveStmt (resource, amount)
-├── TakeStmt (resource, amount)
-├── CallStmt (func_name, args[])
-├── ReturnStmt (value)
-└── ExprStmt
+## 5. Optimisations et Débogages Récents
 
-Expressions
-├── BinaryOp (op, left, right)
-├── UnaryOp (op, operand)
-├── Literal (value, type)
-├── VariableRef (name)
-└── FuncCall (name, args[])
-```
+Lors du développement, plusieurs défis techniques critiques ont été relevés :
 
-### 4.2 Pattern Visitor
+1. **Boucle infinie dans l'Optimiseur (`RecursionError`) :**
+   L'optimiseur implémentait un visiteur (`_generic_visit`) qui traversait récursivement les attributs internes Python des `Enum` au lieu de se limiter strictement aux nœuds `ASTNode`. Une refactorisation stricte du filtrage des objets a supprimé ces blocages inattendus (qui causaient un "Timeout" dans le navigateur).
+2. **Propagations des erreurs dans l'API Flask :**
+   Les erreurs de compilation métier étaient interceptées mais masquées par le serveur web (qui retournait un code `500 Internal Server Error`). Le backend a été corrigé pour renvoyer des rapports de diagnostic propres sous format JSON, ce qui permet à l'interface d'indiquer exactement quelle étape (Lexique, Syntaxe, etc.) a échoué.
 
-L'AST implémente le pattern **Visitor** pour les traversées :
-- `SemanticVisitor` : 4 passes d'analyse sémantique
-- `CodeGenVisitor` : génération de l'IR JSON
-- `HTMLReportVisitor` : génération du rapport HTML
+---
 
-## 5. Les 4 Passes Sémantiques
+## 6. Interface Utilisateur (QuestLang Forge)
 
-### 5.1 Passe 1 - Table des symboles
+Une interface web a été développée en **JavaScript Vanilla, HTML et CSS** et reliée via un backend **Flask (Python)**.
+Elle permet :
+- L'édition de code source en temps réel.
+- L'affichage immédiat des diagnostics dans une console intégrée.
+- La visualisation dynamique du graphe du monde sous forme de réseau (bibliothèque `vis.js`).
+- L'affichage de l'état du pipeline pour comprendre à quelle étape de la compilation le code a échoué.
 
-**Algorithme** : Parcours de l'AST avec insertion dans une table de hachage
+*(Note : Afin de focaliser l'interface sur son rôle principal d'outil de conception et de validation de langages, le module de Simulation a été volontairement retiré du périmètre.)*
 
-**Détections** :
-- Doublons de quêtes, items, PNJ, fonctions
-- Références indéfinies (start, win_condition, requires, unlocks, rewards, costs)
-- Appels de fonctions inexistantes
+---
 
-**Complexité** : O(n) où n = nombre de déclarations
+## 7. Conclusion
 
-### 5.2 Passe 2 - Accessibilité
-
-**Algorithme** : DFS itératif sur le graphe de quêtes
-
-**Détections** :
-- Quêtes inaccessibles depuis le point de départ
-- Condition de victoire jamais atteignable
-- Quêtes accessibles sans récompense (avertissement)
-
-**Complexité** : O(V + E) où V = quêtes, E = liens requires/unlocks
-
-### 5.3 Passe 3 - Économie
-
-**Algorithme** : Analyse de flux avec accumulation
-
-**Détections** :
-- Déficit d'item (consommé plus que produit)
-- Surplus d'item (produit sans jamais être consommé)
-- Inflation d'or (ratio injecté/consommé > 10)
-- Déflation d'or (ratio < 0.5)
-
-**Complexité** : O(n) où n = nombre de quêtes
-
-### 5.4 Passe 4 - Cycles
-
-**Algorithme** : Tarjan Strongly Connected Components (SCC)
-
-**Détections** :
-- Cycles de dépendances mutuelles (deadlock narratif)
-- Boucles d'unlock (avertissement)
-- Items déclarés mais jamais utilisés
-- PNJ qui ne donnent aucune quête
-
-**Complexité** : O(V + E)
-
-## 6. Génération de Code
-
-### 6.1 IR JSON
-
-L'IR (Intermediate Representation) est un document JSON structuré contenant :
-- Le monde avec ses propriétés
-- Les quêtes avec leurs dépendances et récompenses
-- Les items avec leurs caractéristiques
-- Les PNJ avec leurs liens
-
-Cette représentation est **machine-readable** et peut servir de base à :
-- Un moteur de jeu
-- Une base de données de contenu
-- Un générateur de rapports
-
-### 6.2 Rapport HTML
-
-Le rapport HTML contient :
-- Le graphe de dépendances des quêtes (vis.js)
-- La liste des erreurs et avertissements
-- Les métriques du monde
-
-## 7. Défis Rencontrés et Solutions
-
-### 7.1 Récupération d'erreurs syntaxiques
-
-**Problème** : Le parser s'arrêtait à la première erreur.
-**Solution** : Implémentation du panic mode avec points de synchronisation (`;`, `}`). Le parser consomme les tokens jusqu'au prochain point sûr et continue l'analyse.
-
-### 7.2 Détection des quêtes inaccessibles
-
-**Problème** : Comment détecter efficacement les quêtes qui ne sont jamais atteignables.
-**Solution** : Modélisation du monde sous forme de graphe dirigé (quêtes = nœuds, requires/unlocks = arêtes) puis DFS depuis le point de départ. Les nœuds non visités sont inaccessibles.
-
-### 7.3 Analyse de l'économie
-
-**Problème** : Comment détecter les déséquilibres économiques (inflation, déficit).
-**Solution** : Accumulation des flux d'or et d'items sur l'ensemble des quêtes. Calcul du ratio injecté/consommé pour l'or et des bilans par item.
-
-### 7.4 Détection des cycles
-
-**Problème** : Détecter les dépendances circulaires entre quêtes (A nécessite B, B nécessite A).
-**Solution** : Algorithme de Tarjan pour les composantes fortement connexes. Toute SCC de taille > 1 contient un cycle.
-
-### 7.5 Interface web interactive
-
-**Problème** : Comment visualiser le graphe de quêtes de manière intuitive.
-**Solution** : Utilisation de vis.js avec layout hiérarchique dirigé. Filtres interactifs par type de nœud. Simulation du déroulement du monde avec évolution de l'inventaire.
-
-## 8. Tests et Validation
-
-### 8.1 Couverture des tests
-
-- **6 tests lexer** : tokens, mots-clés, commentaires, nombres, chaînes, localisation
-- **7 tests parser** : quêtes, world, items, PNJ, récompenses, scripts, fonctions
-- **3 tests sémantiques Passe 1** : doublons, références indéfinies
-- **3 tests sémantiques Passe 2** : accessibilité, victoire inaccessible, sans récompense
-- **2 tests sémantiques Passe 3** : déficit d'items, inflation d'or
-- **2 tests sémantiques Passe 4** : deadlock, items morts
-- **4 tests d'intégration** : pipeline complet, HTML, JSON, monde brisé
-
-### 8.2 Cas de test
-
-- `valid_world.ql` : Monde cohérent avec 3 quêtes, 3 items, 1 PNJ
-- `broken_world.ql` : Monde avec erreurs intentionnelles pour tester la robustesse
-
-## 9. Conclusion
-
-QuestLang démontre la conception complète d'un compilateur pour un DSL spécialisé, de l'analyse lexicale à la génération de code intermédiaire, en passant par quatre passes d'analyse sémantique avancée. L'interface web interactive et la simulation du monde ajoutent une dimension innovante au projet.
+Le compilateur QuestLang démontre avec succès la création d'un langage dédié, intégrant des concepts fondamentaux de la théorie de la compilation (Lexing, Parsing `LL(1)`, Visiteurs AST) couplés à des algorithmes de théorie des graphes (DFS, Algorithme de Tarjan) pour prouver des propriétés logiques complexes. L'outil est à la fois robuste, fonctionnel et pédagogique.

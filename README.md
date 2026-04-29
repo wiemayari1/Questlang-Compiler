@@ -1,267 +1,204 @@
 # QuestLang Forge - Compilateur pour Mondes RPG
 
-QuestLang est un langage dedie (DSL) pour decrire des mondes de jeu RPG. Il permet de declarer des quetes, des objets, des personnages non-joueurs et de verifier automatiquement la coherence du monde a la compilation grace a quatre passes d'analyse semantique.
+QuestLang est un langage dédié (DSL) pour décrire des mondes de jeu RPG. Il permet de déclarer des quêtes, des objets, des personnages non-joueurs (PNJ) et de vérifier automatiquement la cohérence du monde à la compilation grâce à quatre passes d'analyse sémantique rigoureuses.
 
 ---
 
-## Apercu
+## Aperçu du Pipeline
 
-QuestLang transforme un fichier texte decrivant un monde en une representation intermediaire JSON verifiee, avec detection des erreurs lexicales, syntaxiques et semantiques.
+QuestLang transforme un fichier texte décrivant un monde en une représentation intermédiaire JSON (IR) vérifiée, avec détection des erreurs lexicales, syntaxiques et sémantiques.
 
-```
-Source .ql -> Lexer -> Parser -> AST -> 4 Passes Semantiques -> IR JSON + Rapport
+```text
+Source .ql -> Lexer -> Parser -> AST -> 4 Passes Sémantiques -> IR JSON + Rapport HTML
 ```
 
 ---
 
-## Fonctionnalites
+## Fonctionnalités
 
 ### Langage QuestLang
 
-- **Declarations** : `world`, `quest`, `item`, `npc`
+- **Déclarations** : `world`, `quest`, `item`, `npc`
 - **Variables et types** : `var`, `int`, `float`, `bool`, `string`, `list`
-- **Expressions** : arithmetiques, logiques, comparaisons
-- **Controle** : `if`/`else`, `while`, `for`/`in`
-- **Fonctions** : `func` avec parametres et `return`
-- **Instructions speciales** : `give`, `take`, `call`
+- **Expressions** : arithmétiques, logiques, comparaisons
+- **Contrôle** : `if`/`else`, `while`, `for`/`in`
+- **Fonctions** : `func` avec paramètres et `return`
+- **Instructions spéciales** : `give`, `take`, `call`
 
-### Pipeline semantique
+### Pipeline Sémantique et Analyse Statique
 
-| Passe | Algorithme | Detection |
+QuestLang effectue une vérification approfondie de la cohérence de la logique de jeu, rendant impossible la création d'un jeu "cassé".
+
+| Passe | Algorithme | Détection |
 |-------|------------|-----------|
-| 1 - Symboles | Table des symboles | Doublons, references indefinies |
-| 2 - Accessibilite | DFS iteratif O(V+E) | Quetes inaccessibles, fin inaccessible |
-| 3 - Economie | Analyse de flux | Inflation, deficit, surplus |
-| 4 - Cycles | Tarjan SCC O(V+E) | Deadlocks, items morts, PNJ inutiles |
-
-### Simulation du monde
-
-Apres compilation reussie, l'interface web permet de simuler le deroulement du monde :
-
-- Ordre de completion des quetes (topologique)
-- Evolution de l'inventaire du joueur (or, XP, items)
-- Visualisation pas-a-pas ou lecture automatique
-- Detection de la condition de victoire
+| 1 - Symboles | Table des symboles | Doublons, références indéfinies |
+| 2 - Accessibilité | DFS itératif O(V+E) | Quêtes inaccessibles, condition de victoire inaccessible |
+| 3 - Économie | Analyse de flux | Inflation d'or, déficit d'items, surplus |
+| 4 - Cycles | Tarjan SCC O(V+E) | Interblocages (Deadlocks), items morts, PNJ inutiles |
 
 ---
 
-## Installation rapide
+## Prérequis
 
-### Prerequis
+- Python **3.10 ou supérieur**
+- Un navigateur moderne (Chrome, Firefox, Edge) pour l'interface graphique.
 
-- Python **3.10 ou superieur**
-- `pip` a jour
-- Un navigateur moderne (Chrome, Firefox, Edge)
+---
 
-### 1. Cloner le projet
+## Installation et Lancement sur Windows
 
+### 1. Ouverture du projet
+1. Téléchargez ou clonez le projet sur votre machine :
+```cmd
+git clone https://github.com/wiemayari1/Questlang-Compiler.git
+cd Questlang-Compiler
+```
+2. Ouvrez ce dossier dans votre éditeur de code préféré (ex: **Visual Studio Code**). Si vous avez VS Code installé, tapez simplement :
+```cmd
+code .
+```
+
+### 2. Interface Web (Recommandé)
+Créez un environnement virtuel et installez les dépendances :
+```cmd
+cd web
+py -3 -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Lancez le serveur Flask :
+```cmd
+py -3 app.py
+```
+Ouvrez votre navigateur et allez sur : **http://127.0.0.1:5000**
+
+### 3. Ligne de commande (CLI) et Rapport HTML
+Le compilateur en ligne de commande ne nécessite aucune dépendance externe.
+```cmd
+cd ..
+py -3 questlang.py examples\valid_world.ql
+```
+
+**Générer un Rapport HTML :**
+Le compilateur QuestLang inclut un générateur de rapport HTML (voir le schéma du pipeline). Pour l'obtenir, utilisez simplement l'option `--html` :
+```cmd
+py -3 questlang.py examples\valid_world.ql --html
+```
+Cela créera un fichier `.report.html` dans le répertoire courant !
+
+---
+
+## Installation et Lancement sur Ubuntu / Linux
+
+### 1. Ouverture du projet
+1. Ouvrez votre terminal et clonez le dépôt :
 ```bash
 git clone https://github.com/wiemayari1/Questlang-Compiler.git
 cd Questlang-Compiler
 ```
-
-### 2. Lancer le compilateur en ligne de commande (CLI)
-
-Aucune dependance externe n'est requise pour le CLI.
-
+2. Ouvrez le dossier dans votre éditeur de code (ex: **VS Code**) :
 ```bash
-# Tester la compilation d'un exemple
-python questlang.py examples/valid_world.ql
-
-# Generer le rapport HTML + IR JSON
-python questlang.py examples/valid_world.ql --html --ir --out ./rapports/
+code .
+```
+Assurez-vous que le paquet `python3-venv` est installé :
+```bash
+sudo apt update
+sudo apt install python3-venv python3-pip
 ```
 
-### 3. Lancer l'interface web (QuestLang Forge)
-
+### 2. Interface Web (Recommandé)
+Créez un environnement virtuel et installez les dépendances :
 ```bash
 cd web
-
-# (Recommande) Creer un environnement virtuel
-python -m venv venv
-
-# Activer l'environnement virtuel
-# Sur Windows :
-venv\Scripts\activate
-# Sur macOS/Linux :
+python3 -m venv venv
 source venv/bin/activate
-
-# Installer les dependances
 pip install -r requirements.txt
-
-# Demarrer le serveur Flask
-python app.py
 ```
 
-### 4. Ouvrir dans le navigateur
-
-Rendez-vous sur : **http://localhost:5000**
-
-### 5. Utiliser l'interface
-
-1. **Charger un exemple** : selectionnez un monde dans le menu deroulant en haut.
-2. **Charger votre fichier** : cliquez sur le bouton 📂 puis choisissez un fichier `.ql` depuis votre ordinateur.
-3. **Compiler** : cliquez sur le bouton **Compiler** pour voir l'analyse lexicale, syntaxique, les 4 passes semantiques, le graphe du monde et la simulation.
-4. **Explorer** : utilisez les onglets *Carte*, *Analyse*, *Simulation* et la console en bas.
-
-### 6. Executer les tests
-
+Lancez le serveur Flask :
 ```bash
-python tests/test_compiler.py
+python3 app.py
 ```
+Ouvrez votre navigateur et allez sur : **http://127.0.0.1:5000**
 
----
-
-## Utilisation CLI
-
+### 3. Ligne de commande (CLI) et Rapport HTML
 ```bash
-# Compilation simple
-python questlang.py examples/valid_world.ql
-
-# Avec rapport HTML
-python questlang.py examples/valid_world.ql --html --out rapports/
-
-# Afficher l'IR JSON
-python questlang.py examples/valid_world.ql --ir
-
-# Tester le monde avec erreurs
-python questlang.py examples/broken_world.ql
+cd ..
+python3 questlang.py examples/valid_world.ql
 ```
 
-Options disponibles :
-
+**Générer un Rapport HTML :**
+Le compilateur QuestLang inclut un générateur de rapport HTML. Pour l'obtenir, utilisez l'option `--html` :
+```bash
+python3 questlang.py examples/valid_world.ql --html
 ```
---html          Generer un rapport HTML avec graphe de dependances
---ir            Afficher l'IR JSON genere
---tokens        Afficher les tokens lexicaux
---ast           Afficher l'AST simplifie
---out DIR       Repertoire de sortie (defaut: .)
--v, --verbose   Mode verbeux
---no-banner     Desactiver la banniere
-```
+Cela générera un fichier `.report.html` contenant l'analyse complète de la compilation.
 
 ---
 
 ## Interface Web - QuestLang Forge
 
-Une interface graphique interactive et immersive pour editer, compiler, visualiser et simuler les mondes QuestLang dans le navigateur.
+L'interface graphique interactive permet d'éditer, compiler et visualiser les mondes QuestLang dans le navigateur.
 
-### Fonctionnalites de l'interface
+### Fonctionnalités de l'interface
 
-**Editeur**
-- Syntax highlighting QuestLang avec coloration personnalisee
-- Snippets : taper `quest` + Ctrl+Space genere le squelette d'une quete
-- Pliage de code pour les blocs imbriques
-- Marqueurs d'erreur cliquables dans la gouttiere
-- Sauvegarde auto dans le navigateur (localStorage)
+**Éditeur de Code Intégré**
+- Coloration syntaxique QuestLang personnalisée.
+- Marqueurs d'erreurs en temps réel (lignes/colonnes) signalant les échecs lexicaux et syntaxiques.
+- Chargement d'exemples pré-faits depuis le serveur.
 
-**Carte du Monde**
-- Graphe interactif des quetes, objets et PNJ avec vis.js
-- Filtres : afficher/masquer par type (quetes, items, PNJ, recompenses)
-- Layout hierarchique gauche-droite avec zoom et deplacement
-- Physique activable/desactivable
-- Export PNG du graphe
+**Analyse du Pipeline**
+- Dashboard interactif illustrant le pipeline de compilation (Lexical -> Syntaxique -> Sémantique -> Génération).
+- Les étapes s'affichent en rouge ou en vert selon la réussite.
+- Mode pas-à-pas pour inspecter visuellement les résultats des 4 passes sémantiques.
 
-**Analyse Semantique**
-- Dashboard des 4 passes avec statuts colores et metriques detaillees
-- Mode pas-a-pas : execution sequentielle animee des passes
-- Metriques : compteurs en temps reel
+**Carte du Monde (Graphe)**
+- Graphe interactif des quêtes, objets et PNJ (propulsé par vis.js).
+- Filtres pour afficher ou masquer dynamiquement certains types de nœuds (PNJ, Items, Quêtes).
 
-**Simulation**
-- Inventaire du joueur : or, XP, nombre d'items
-- Timeline des quetes avec etats (completee, active, future)
-- Controles : precedent, suivant, lecture automatique, reinitialisation
-- Barre de progression visuelle
-- Details par etape : recompenses et couts appliques
-
-**Export**
-- Telechargement du fichier `.ql`
-- Telechargement de l'IR JSON
-- Telechargement du graphe en PNG
-
-**Console**
-- Journal de compilation avec horodatage
-- Localisation precise (ligne:colonne)
-- Couleurs par severite (erreur, alerte, info, succes)
+**Console Intégrée**
+- Journal de compilation détaillé avec horodatage.
+- Messages d'avertissement et d'erreurs formidables pointant directement la localisation du code.
 
 ---
 
 ## Structure du projet
 
-```
+```text
 questlang/
 |-- questlang.py              # CLI principal
 |-- src/
-|   |-- errors.py             # Gestion des erreurs
+|   |-- errors.py             # Gestion des erreurs (Lexical, Syntax, Semantic, Generation)
 |   |-- lexer.py              # Analyse lexicale
 |   |-- parser.py             # Analyse syntaxique LL(1)
-|   |-- ast_nodes.py          # Noeuds de l'AST
-|   |-- semantic.py           # 4 passes semantiques
-|   |-- codegen.py            # Generation IR JSON + HTML
+|   |-- ast_nodes.py          # Nœuds de l'AST
+|   |-- semantic.py           # 4 passes sémantiques
+|   |-- codegen.py            # Génération IR JSON + HTML
+|   |-- optimizer.py          # Optimisation de l'AST
 |-- tests/
-|   |-- test_compiler.py      # Tests unitaires et d'integration
+|   |-- test_compiler.py      # Tests unitaires et d'intégration
 |-- examples/
-|   |-- valid_world.ql        # Monde valide (Le Monde de Valdris)
-|   |-- broken_world.ql       # Monde avec erreurs intentionnelles
+|   |-- valid_world.ql        # Exemple de monde valide
+|   |-- erreur_lexicale.ql    # Exemple d'erreur lexicale
+|   |-- erreur_syntaxique.ql  # Exemple d'erreur de syntaxe
+|   |-- monde_inaccessible.ql # Exemple d'erreur sémantique
 |-- web/
 |   |-- app.py                # Serveur Flask (API REST)
-|   |-- requirements.txt      # Dependances web
+|   |-- requirements.txt      # Dépendances web
 |   |-- templates/
-|   |   |-- index.html        # Interface unique
+|   |   |-- index.html        # Interface graphique
 |   |-- static/
-|   |   |-- css/style.css     # Theme RPG immersif
-|   |   |-- js/main.js        # Logique frontend complete
+|   |   |-- css/style.css     # Thème immersif
+|   |   |-- js/main.js        # Logique frontend
 |-- docs/
-|   |-- rapport.md            # Rapport technique
+|   |-- RAPPORT_TECHNIQUE.md  # Rapport technique approfondi
+|   |-- GRAMMAIRE_EBNF.md     # Grammaire du DSL
 |-- README.md
 ```
 
 ---
 
-## Tests
-
-```bash
-python tests/test_compiler.py
-```
-
-Couverture :
-
-- 6 tests lexer (tokens, mots-cles, commentaires, nombres, chaines, localisation)
-- 7 tests parser (quetes, world, items, PNJ, recompenses, scripts, fonctions)
-- 3 tests semantiques Passe 1 (doublons, references indefinies)
-- 3 tests semantiques Passe 2 (accessibilite, victoire inaccessible, sans recompense)
-- 2 tests semantiques Passe 3 (deficit d'items, inflation d'or)
-- 2 tests semantiques Passe 4 (deadlock, items morts)
-- 4 tests d'integration (pipeline complet, HTML, JSON, monde brise)
-
----
-
-## Choix techniques
-
-- **Langage** : Python 3.10+ (lisibilite, rapidite de prototypage)
-- **Lexer** : Automate a etats avec expressions regulieres, une passe O(n)
-- **Parser** : Recursif descendant LL(1) avec recuperation d'erreurs
-- **AST** : Structure arborescente typee avec pattern Visitor
-- **Passe 2** : DFS iteratif - O(V + E)
-- **Passe 3** : Analyse de flux avec accumulation
-- **Passe 4** : Algorithme de Tarjan SCC - O(V + E)
-- **Sortie** : IR JSON (machine-readable) + rapport HTML (human-readable)
-- **Interface web** : Flask + vis.js, zero dependance lourde
-- **Simulation** : Calcul d'ordre topologique des quetes avec evolution de l'inventaire
-
----
-
-## Depannage courant
-
-| Probleme | Solution |
-|----------|----------|
-| `ModuleNotFoundError: No module named 'flask'` | `cd web && pip install -r requirements.txt` |
-| Le port 5000 est deja utilise | `python app.py` utilise le port 5000 par defaut. Fermez l'autre application ou modifiez `port=5000` dans `app.py`. |
-| L'interface web affiche "Mode demo" | Le backend ne trouve pas les modules `src/`. Verifiez que vous lancez `app.py` depuis le dossier `web/` et que le dossier `src/` existe bien a la racine. |
-| Le fichier `.ql` ne se charge pas | Verifiez que vous avez bien la derniere version de `main.js` avec le listener sur `#file-input`. |
-
----
-
-## Auteur
+## Auteurs
 
 Ayari Wiem / Ourari Ranim / Ayadi Soumaya / Sakroufi Aya

@@ -31,6 +31,9 @@ class SemanticError(QuestLangError):
 class QuestLangRuntimeError(QuestLangError):
     pass
 
+class GenerationError(QuestLangError):
+    pass
+
 class ErrorReporter:
     def __init__(self):
         self.errors = []

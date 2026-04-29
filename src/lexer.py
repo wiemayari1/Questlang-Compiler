@@ -32,8 +32,10 @@ class Token:
         return f"Token({self.type.name}, {self.value!r}, L{self.line})"
 
     def __eq__(self, other):
-        if isinstance(other, TokenType): return self.type == other
-        if isinstance(other, Token): return self.type == other.type and self.value == other.value
+        if isinstance(other, TokenType):
+            return self.type == other
+        if isinstance(other, Token):
+            return self.type == other.type and self.value == other.value
         return False
 
 class Lexer:
@@ -94,8 +96,10 @@ class Lexer:
             self.advance(); self.advance()
             while not (self.peek() == '*' and self.peek(1) == '/') and self.peek() != '\0':
                 self.advance()
-            if self.peek() == '*': self.advance()
-            if self.peek() == '/': self.advance()
+            if self.peek() == '*':
+                self.advance()
+            if self.peek() == '/':
+                self.advance()
 
     def read_string(self):
         sl, sc = self.line, self.column
@@ -162,23 +166,26 @@ class Lexer:
                 self.tokens.append(self.read_identifier())
                 continue
             two = char + self.peek(1)
-            two_map = {'==':TokenType.EQ,'!=':TokenType.NEQ,'>=':TokenType.GTE,'<=':TokenType.LTE,
-                       '+=':TokenType.PLUS_ASSIGN,'-=':TokenType.MINUS_ASSIGN,'->':TokenType.ARROW}
+            two_map = {
+                '==': TokenType.EQ, '!=': TokenType.NEQ, '>=': TokenType.GTE, '<=': TokenType.LTE,
+                '+=': TokenType.PLUS_ASSIGN, '-=': TokenType.MINUS_ASSIGN, '->': TokenType.ARROW
+            }
             if two in two_map:
                 self.advance(); self.advance()
                 self.tokens.append(Token(two_map[two], two, line, col, self.filename))
                 continue
-            single = {'+':TokenType.PLUS,'-':TokenType.MINUS,'*':TokenType.STAR,'/':TokenType.SLASH,
-                      '%':TokenType.PERCENT,'^':TokenType.POWER,'=':TokenType.ASSIGN,
-                      '>':TokenType.GT,'<':TokenType.LT,':':TokenType.COLON,';':TokenType.SEMICOLON,
-                      ',':TokenType.COMMA,'(':TokenType.LPAREN,')':TokenType.RPAREN,
-                      '{':TokenType.LBRACE,'}':TokenType.RBRACE,'[':TokenType.LBRACKET,
-                      ']':TokenType.RBRACKET,'.':TokenType.DOT}
+            single = {
+                '+': TokenType.PLUS, '-': TokenType.MINUS, '*': TokenType.STAR, '/': TokenType.SLASH,
+                '%': TokenType.PERCENT, '^': TokenType.POWER, '=': TokenType.ASSIGN,
+                '>': TokenType.GT, '<': TokenType.LT, ':': TokenType.COLON, ';': TokenType.SEMICOLON,
+                ',': TokenType.COMMA, '(': TokenType.LPAREN, ')': TokenType.RPAREN,
+                '{': TokenType.LBRACE, '}': TokenType.RBRACE, '[': TokenType.LBRACKET,
+                ']': TokenType.RBRACKET, '.': TokenType.DOT
+            }
             if char in single:
                 self.advance()
                 self.tokens.append(Token(single[char], char, line, col, self.filename))
                 continue
-            # CORRECTION : lever une erreur lexicale au lieu de skip silencieusement
             raise LexicalError(
                 f"Caractere inconnu '{char}' (code ASCII {ord(char)})",
                 self.line, self.column, self.filename

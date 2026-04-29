@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""QuestLang Forge - Interface Web Corrigee"""
-import os, sys, threading, traceback, importlib.util
+
+import os, sys, threading, traceback
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -11,7 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-# CORS restreint aux origines locales uniquement
+
 CORS(app, resources={
     r"/api/*": {
         "origins": ["http://localhost:5000", "http://127.0.0.1:5000"],
@@ -20,17 +20,20 @@ CORS(app, resources={
     }
 })
 
-EXAMPLES = {
-    "monde_complexe": "world royaume_eldoria {\n start: quete_village;\n start_gold: 100;\n win_condition: quete_royale;\n}\n\nquest quete_village {\n title: \"Le Village en Detresse\";\n desc: \"Des gobelins attaquent le village.\";\n unlocks: quete_foret, quete_mine;\n rewards: xp 50, gold 20;\n}\n\nquest quete_foret {\n title: \"La Foret Maudite\";\n desc: \"Trouvez l'herbe medicinale.\";\n requires: quete_village;\n unlocks: quete_chateau;\n rewards: xp 100, gold 30, 1 herbe_rare;\n costs: 1 torche;\n}\n\nquest quete_mine {\n title: \"Les Profondeurs\";\n desc: \"Recuperez le minerai magique.\";\n requires: quete_village;\n unlocks: quete_forge;\n rewards: xp 120, gold 40, 1 minerai_magique;\n costs: 2 torche;\n}\n\nquest quete_forge {\n title: \"La Forge Celeste\";\n desc: \"Forgez l'epee legendaire.\";\n requires: quete_mine;\n unlocks: quete_royale;\n rewards: xp 200, gold 50, 1 epee_legendaire;\n costs: 1 minerai_magique;\n}\n\nquest quete_chateau {\n title: \"Le Chateau Oublie\";\n desc: \"Trouvez le parchemin ancien.\";\n requires: quete_foret;\n unlocks: quete_royale;\n rewards: xp 150, gold 40, 1 parchemin_ancien;\n}\n\nquest quete_royale {\n title: \"Le Couronnement\";\n desc: \"Devenez le roi d'Eldoria.\";\n requires: quete_forge, quete_chateau;\n rewards: xp 1000, gold 500, 1 couronne_royale;\n}\n\nitem herbe_rare { title: \"Herbe Rare\"; value: 30; stackable: true; type: material; }\nitem torche { title: \"Torche\"; value: 5; stackable: true; type: consumable; }\nitem minerai_magique { title: \"Minerai Magique\"; value: 100; stackable: false; type: material; }\nitem epee_legendaire { title: \"Epee Legendaire\"; value: 500; stackable: false; type: weapon; }\nitem parchemin_ancien { title: \"Parchemin Ancien\"; value: 200; stackable: false; type: artifact; }\nitem couronne_royale { title: \"Couronne Royale\"; value: 5000; stackable: false; type: artifact; }\n\nnpc chef_village { title: \"Chef du Village\"; location: village; gives_quest: quete_village; }\nnpc druide { title: \"Le Druide\"; location: foret; gives_quest: quete_foret; }\nnpc mineur_nain { title: \"Thorin le Mineur\"; location: mine; gives_quest: quete_mine; }\nnpc forgeron_maitre { title: \"Maitre Forgeron\"; location: forge; gives_quest: quete_forge; }\nnpc roi { title: \"Roi Eldor\"; location: chateau; gives_quest: quete_royale; }",
-    "monde_deadlock": "world deadlock_test {\n start: q1;\n start_gold: 100;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete A\";\n desc: \"A a besoin de B.\";\n requires: q2;\n unlocks: q3;\n rewards: xp 100;\n}\n\nquest q2 {\n title: \"Quete B\";\n desc: \"B a besoin de A.\";\n requires: q1;\n rewards: xp 100;\n}\n\nquest q3 {\n title: \"Quete C\";\n desc: \"Jamais atteinte.\";\n requires: q1;\n rewards: xp 200;\n}",
-    "monde_erreurs": "world monde_casse {\n start: quete_inexistante;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Depart\";\n desc: \"Quete de depart.\";\n unlocks: quete_milieu;\n rewards: xp 100, gold 25;\n}\n\nquest quete_milieu {\n title: \"Milieu\";\n desc: \"Quete du milieu.\";\n requires: quete_inexistante;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee;\n costs: 5 potion;\n}\n\nquest quete_finale {\n title: \"Fin\";\n desc: \"Quete finale.\";\n requires: quete_milieu;\n rewards: xp 500;\n}\n\nquest quete_orpheline {\n title: \"Orpheline\";\n desc: \"Jamais debloquee.\";\n rewards: xp 999;\n}\n\nitem epee { title: \"Epee\"; value: 50; stackable: false; type: weapon; }",
-    "monde_inaccessible": "world inaccessible_test {\n start: q1;\n start_gold: 50;\n win_condition: q2;\n}\n\nquest q1 {\n title: \"Accessible\";\n desc: \"Celle-ci est OK.\";\n unlocks: q2;\n rewards: xp 100, gold 25;\n}\n\nquest q2 {\n title: \"Victoire\";\n desc: \"Condition de victoire.\";\n requires: q1;\n rewards: xp 500;\n}\n\nquest q3 {\n title: \"Oubliee\";\n desc: \"Personne ne debloque cette quete.\";\n rewards: xp 1000, gold 999;\n}",
-    "monde_inflation": "world inflation_test {\n start: q1;\n start_gold: 10;\n win_condition: q3;\n}\n\nquest q1 {\n title: \"Quete d'Or\";\n desc: \"Trop d'or injecte.\";\n unlocks: q2;\n rewards: gold 10000, xp 50;\n}\n\nquest q2 {\n title: \"Milieu\";\n desc: \"Transition.\";\n requires: q1;\n unlocks: q3;\n rewards: gold 5000, xp 50;\n}\n\nquest q3 {\n title: \"Fin\";\n desc: \"Victoire.\";\n requires: q2;\n rewards: xp 100;\n}",
-    "monde_valdris": "world valdris {\n start: quete_depart;\n start_gold: 50;\n win_condition: quete_finale;\n}\n\nquest quete_depart {\n title: \"Le Reveil\";\n desc: \"Vous vous reveillez dans un village detruit.\";\n unlocks: quete_forgeron;\n rewards: xp 100, gold 25;\n\n script {\n var bonus = 10;\n if (bonus > 5) {\n give xp bonus;\n }\n }\n}\n\nquest quete_forgeron {\n title: \"L'Appel du Fer\";\n desc: \"Le forgeron a besoin de minerai.\";\n requires: quete_depart;\n unlocks: quete_finale;\n rewards: xp 200, gold 50, 1 epee_rouillee;\n costs: 2 minerai;\n}\n\nquest quete_finale {\n title: \"Le Dernier Combat\";\n desc: \"Affrontez le dragon.\";\n requires: quete_forgeron;\n rewards: xp 500, gold 100, 1 ame_dragon;\n}\n\nitem epee_rouillee {\n title: \"Epee Rouillee\";\n value: 25;\n stackable: false;\n type: weapon;\n}\n\nitem minerai {\n title: \"Minerai de Fer\";\n value: 5;\n stackable: true;\n type: material;\n}\n\nitem ame_dragon {\n title: \"Ame du Dragon\";\n value: 1000;\n stackable: false;\n type: artifact;\n}\n\nnpc forgeron_gorak {\n title: \"Gorak le Forgeron\";\n location: forge_centrale;\n gives_quest: quete_forgeron;\n}"
-}
+def load_examples():
+    examples_dir = PROJECT_ROOT / 'examples'
+    examples = {}
+    if examples_dir.exists():
+        for f in examples_dir.glob('*.ql'):
+            try:
+                examples[f.stem] = f.read_text(encoding='utf-8')
+            except Exception:
+                pass
+    return examples
+
+EXAMPLES = load_examples()
 
 def get_modules():
-    """Retourne les modules du compilateur."""
     try:
         from lexer import Lexer
         from parser import Parser
@@ -54,12 +57,7 @@ def health():
     mods = get_modules()
     if isinstance(mods, dict) and "error" in mods:
         return jsonify({"status": "error", "message": mods["error"]}), 500
-    return jsonify({
-        "status": "ok",
-        "modules": ["lexer", "parser", "semantic", "codegen"]
-    })
-
-# --- Gestionnaires d'erreurs globaux ---
+    return jsonify({"status": "ok", "modules": ["lexer", "parser", "semantic", "codegen"]})
 
 @app.errorhandler(404)
 def not_found(e):
@@ -90,8 +88,6 @@ def handle_exception(e):
             "traceback": tb
         }), 500
     raise e
-
-# --- Helpers ---
 
 def _normalize_quests(ir):
     raw = ir.get("quests") if isinstance(ir, dict) else None
@@ -147,153 +143,7 @@ def _error_to_dict(entry, severity="error"):
         result["code"] = entry.code
     return result
 
-def compute_simulation(ir, ast):
-    if not ir or not ast:
-        return None
-    quests = _normalize_quests(ir)
-    if not quests:
-        return None
-    world = ir.get("world", {}) if isinstance(ir, dict) else {}
-    graph = defaultdict(list)
-    in_degree = defaultdict(int)
-    quest_map = {}
-    for q in quests:
-        qid = q.get("id") if isinstance(q, dict) else None
-        if not qid:
-            continue
-        quest_map[qid] = q
-        in_degree[qid]
-    for q in quests:
-        qid = q.get("id") if isinstance(q, dict) else None
-        if not qid:
-            continue
-        unlocks = q.get("unlocks", [])
-        if isinstance(unlocks, list):
-            for unlocked in unlocks:
-                if unlocked in quest_map:
-                    graph[qid].append(unlocked)
-                    in_degree[unlocked] += 1
-        requires = q.get("requires", [])
-        if isinstance(requires, list):
-            for req in requires:
-                if req in quest_map:
-                    graph[req].append(qid)
-                    in_degree[qid] += 1
-    start_quest = ""
-    if isinstance(world, dict):
-        sg = world.get("start", "")
-        start_quest = sg if isinstance(sg, str) else ""
-    queue = deque()
-    if start_quest and start_quest in quest_map:
-        queue.append(start_quest)
-    else:
-        for qid in list(quest_map.keys()):
-            if in_degree.get(qid, 0) == 0:
-                queue.append(qid)
-    order = []
-    max_iter = len(quest_map) * 10
-    iterations = 0
-    while queue and iterations < max_iter:
-        iterations += 1
-        current = queue.popleft()
-        if current not in order:
-            order.append(current)
-        for neighbor in graph.get(current, []):
-            in_degree[neighbor] -= 1
-            if in_degree.get(neighbor, 0) <= 0 and neighbor not in order:
-                queue.append(neighbor)
-    for qid in quest_map:
-        if qid not in order:
-            order.append(qid)
-    start_gold = 50
-    if isinstance(world, dict):
-        sg = world.get("start_gold", 50)
-        if isinstance(sg, (int, float)):
-            start_gold = int(sg)
-    inventory = {"gold": start_gold, "xp": 0, "items": {}}
-    history = []
-    win_reached = False
-    win_condition = ""
-    if isinstance(world, dict):
-        wc = world.get("win_condition", "")
-        win_condition = wc if isinstance(wc, str) else ""
 
-    def eval_expr(expr):
-        if isinstance(expr, (int, float)):
-            return expr
-        if isinstance(expr, dict):
-            op = expr.get("op")
-            if op in ("+", "-", "*", "/"):
-                left = eval_expr(expr.get("left", 0))
-                right = eval_expr(expr.get("right", 0))
-                if op == "+":
-                    return left + right
-                elif op == "-":
-                    return left - right
-                elif op == "*":
-                    return left * right
-                elif op == "/":
-                    return left / right if right != 0 else 0
-            if "call" in expr:
-                return 0
-        return 0
-
-    for qid in order:
-        q = quest_map.get(qid)
-        if not q:
-            continue
-        rewards = q.get("rewards", [])
-        if isinstance(rewards, list):
-            for r in rewards:
-                if isinstance(r, dict):
-                    rtype = r.get("type", "")
-                    if rtype == "gold":
-                        inventory["gold"] += eval_expr(r.get("amount", 0))
-                    elif rtype == "xp":
-                        inventory["xp"] += eval_expr(r.get("amount", 0))
-                    elif rtype == "item":
-                        item_name = r.get("name", "")
-                        qty = int(eval_expr(r.get("quantity", 1)))
-                        if item_name:
-                            inventory["items"][item_name] = inventory["items"].get(item_name, 0) + qty
-        costs = q.get("costs", [])
-        if isinstance(costs, list):
-            for c in costs:
-                if isinstance(c, dict):
-                    ctype = c.get("type", "")
-                    if ctype == "gold":
-                        inventory["gold"] -= eval_expr(c.get("amount", 0))
-                    elif ctype == "item":
-                        item_name = c.get("name", "")
-                        qty = int(eval_expr(c.get("quantity", 1)))
-                        if item_name and item_name in inventory["items"]:
-                            inventory["items"][item_name] = max(0, inventory["items"][item_name] - qty)
-        title = q.get("title", qid)
-        if isinstance(title, dict):
-            title = title.get("value", qid)
-        elif not isinstance(title, str):
-            title = str(title)
-        history.append({
-            "quest": qid,
-            "title": title,
-            "inventory_after": {
-                "gold": inventory["gold"],
-                "xp": inventory["xp"],
-                "items": dict(inventory["items"])
-            }
-        })
-        if win_condition and qid == win_condition:
-            win_reached = True
-    return {
-        "order": order,
-        "inventory": {
-            "gold": inventory["gold"],
-            "xp": inventory["xp"],
-            "items": dict(inventory["items"])
-        },
-        "history": history,
-        "win_reached": win_reached
-    }
 
 def build_quest_graph(ast, ir):
     nodes = []
@@ -371,7 +221,6 @@ def build_passes_report(report):
         "DEADLOCK_CYCLE": 3, "UNLOCK_LOOP": 3, "DEAD_ITEM": 3, "IDLE_NPC": 3
     }
     all_entries = []
-    # FIX #2: Utiliser get_diagnostics() au lieu d'acceder directement a .errors/.warnings
     if hasattr(report, 'get_diagnostics'):
         diagnostics = report.get_diagnostics()
         if isinstance(diagnostics, dict):
@@ -452,9 +301,7 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
             ast = parser.parse()
             semantic = mods['semantic']()
             semantic.analyze(ast)
-            # FIX #2: report est l'objet semantic lui-meme (expose get_diagnostics)
             report = semantic
-            # FIX #1 & #3: passer None comme diagnostics (default), utiliser generate_ir()
             codegen = mods['codegen'](ast, None)
             ir = codegen.generate_ir()
             result["data"] = {
@@ -469,7 +316,10 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
             result["error"] = {
                 "type": type(e).__name__,
                 "msg": str(e),
-                "traceback": traceback.format_exc()
+                "traceback": traceback.format_exc(),
+                "line": getattr(e, 'line', 0),
+                "column": getattr(e, 'column', 0),
+                "code": getattr(e, 'code', type(e).__name__)
             }
             result["done"] = True
 
@@ -477,13 +327,18 @@ def compile_with_timeout(source, step_mode, timeout_sec=8):
     thread.daemon = True
     thread.start()
     thread.join(timeout=timeout_sec)
-    if not result["done"]:
-        raise CompilationTimeout("La compilation a depasse le delai de {} secondes".format(timeout_sec))
+
+    if thread.is_alive():
+        raise CompilationTimeout(f"La compilation a depasse le delai de {timeout_sec} secondes.")
+
     if result["error"]:
         err = result["error"]
         exc = type(err["type"], (Exception,), {})(err["msg"])
         exc.traceback = err.get("traceback", "")
         exc.error_type = err["type"]
+        exc.line = err.get("line", 0)
+        exc.column = err.get("column", 0)
+        exc.code = err.get("code", err["type"])
         raise exc
     return result["data"]
 
@@ -496,8 +351,12 @@ def compile_code():
         return jsonify({
             "success": False,
             "errors": [{"message": "Code source vide", "line": 0, "col": 0}],
-            "tokens": [], "ast": None, "ir": None,
-            "semantic_report": None, "compilation_details": None
+            "warnings": [],
+            "tokens": [],
+            "ast": None,
+            "ir": None,
+            "semantic_report": None,
+            "compilation_details": None
         })
     try:
         comp_result = compile_with_timeout(source, step_mode, timeout_sec=8)
@@ -507,7 +366,7 @@ def compile_code():
         report = comp_result["report"]
         parser_errors = comp_result.get("parser_errors", [])
         errors, warnings = [], []
-        # FIX #2: Utiliser get_diagnostics() pour recuperer les erreurs/warnings
+
         if report and hasattr(report, 'get_diagnostics'):
             diagnostics = report.get_diagnostics()
             if isinstance(diagnostics, dict):
@@ -520,7 +379,6 @@ def compile_code():
                     entry["pass"] = ""
                     warnings.append(entry)
         elif report:
-            # Fallback si get_diagnostics n'existe pas
             if hasattr(report, 'errors') and isinstance(report.errors, list):
                 for e in report.errors:
                     entry = _error_to_dict(e, "error")
@@ -531,6 +389,7 @@ def compile_code():
                     entry = _error_to_dict(w, "warning")
                     entry["pass"] = ""
                     warnings.append(entry)
+
         for pe in parser_errors:
             if hasattr(pe, 'message'):
                 errors.append({
@@ -541,9 +400,11 @@ def compile_code():
                     "code": "SYNTAX_ERROR",
                     "pass": ""
                 })
+
         quest_graph = build_quest_graph(ast, ir)
         passes_report = build_passes_report(report)
-        simulation = compute_simulation(ir, ast)
+
+            
         ast_nodes_count = count_ast_nodes(ast)
         ast_dict = None
         if hasattr(ast, 'to_dict'):
@@ -553,6 +414,7 @@ def compile_code():
                 ast_dict = {"type": "Program", "to_dict_error": str(te)}
         else:
             ast_dict = {"type": "Program"}
+
         return jsonify({
             "success": len(errors) == 0,
             "errors": errors,
@@ -574,13 +436,12 @@ def compile_code():
                 "total_time": "~25ms",
                 "tokens_count": len(tokens),
                 "ast_nodes": ast_nodes_count
-            },
-            "simulation": simulation
+            }
         })
     except CompilationTimeout as te:
         return jsonify({
             "success": False,
-            "errors": [{"message": str(te), "line": 0, "col": 0, "severity": "error"}],
+            "errors": [{"message": str(te), "line": 0, "col": 0, "severity": "error", "code": "CompilationTimeout"}],
             "warnings": [],
             "tokens": [],
             "ast": None,
@@ -591,24 +452,85 @@ def compile_code():
     except Exception as e:
         tb = getattr(e, 'traceback', traceback.format_exc())
         err_type = getattr(e, 'error_type', type(e).__name__)
+        err_line = getattr(e, 'line', 0)
+        err_col = getattr(e, 'column', 0)
+        err_code = getattr(e, 'code', err_type)
+        
+        status_code = 200 if err_type in ('LexicalError', 'SyntaxError', 'SemanticError', 'GenerationError', 'QLSyntaxError', 'QuestLangError') else 500
+        
+        pipeline = [
+            {"step": "Lexical", "status": "ok", "time": "-"},
+            {"step": "Syntaxique", "status": "ok", "time": "-"},
+            {"step": "Semantique", "status": "ok", "time": "-"},
+            {"step": "Generation", "status": "ok", "time": "-"}
+        ]
+        
+        if err_type == 'LexicalError':
+            pipeline[0]["status"] = "error"
+            pipeline[1]["status"] = "pending"
+            pipeline[2]["status"] = "pending"
+            pipeline[3]["status"] = "pending"
+        elif err_type in ('SyntaxError', 'QLSyntaxError'):
+            pipeline[1]["status"] = "error"
+            pipeline[2]["status"] = "pending"
+            pipeline[3]["status"] = "pending"
+        elif err_type == 'SemanticError':
+            pipeline[2]["status"] = "error"
+            pipeline[3]["status"] = "pending"
+        elif err_type == 'GenerationError':
+            pipeline[3]["status"] = "error"
+        else:
+            for p in pipeline:
+                p["status"] = "error"
+                
+        compilation_details = {
+            "pipeline": pipeline,
+            "total_time": "-",
+            "tokens_count": 0,
+            "ast_nodes": 0
+        }
+        
         return jsonify({
             "success": False,
-            "errors": [{"message": str(e), "line": 0, "col": 0, "severity": "error", "code": err_type}],
+            "errors": [{"message": str(e), "line": err_line, "col": err_col, "severity": "error", "code": err_code}],
             "warnings": [],
             "tokens": [],
             "ast": None,
             "ir": None,
             "semantic_report": None,
-            "compilation_details": None,
+            "compilation_details": compilation_details,
             "_debug": {"traceback": tb}
-        }), 500
+        }), status_code
+
+@app.route("/api/report/html", methods=["POST"])
+def report_html():
+    data = request.get_json() or {}
+    source = data.get("code", "")
+    if not source or not source.strip():
+        return jsonify({"success": False, "error": "Code source vide"}), 400
+    try:
+        mods = get_modules()
+        if isinstance(mods, dict) and "error" in mods:
+            return jsonify({"success": False, "error": mods['error']}), 500
+        
+        lexer = mods['lexer'](source)
+        tokens = lexer.tokenize()
+        parser = mods['parser'](tokens)
+        ast = parser.parse()
+        semantic = mods['semantic']()
+        semantic.analyze(ast)
+        
+        diagnostics = semantic.get_diagnostics() if hasattr(semantic, 'get_diagnostics') else None
+        codegen = mods['codegen'](ast, diagnostics)
+        html_content = codegen.to_html()
+        
+        return jsonify({"success": True, "html": html_content})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 @app.route("/api/examples")
 def list_examples():
-    result = []
-    for name, content in EXAMPLES.items():
-        result.append({"name": name, "content": content})
-    return jsonify(result)
+    return jsonify([{"name": name, "content": content} for name, content in EXAMPLES.items()])
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

@@ -28,6 +28,7 @@ env/
 # IDE
 .vscode/
 .idea/
+scratch/
 *.swp
 *.swo
 *~
@@ -41,3 +42,4 @@ rapports/
 .DS_Store
 Thumbs.db
 *:Zone.Identifier
+*Zone.Identifier

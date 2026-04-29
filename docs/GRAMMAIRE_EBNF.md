@@ -1,132 +1,102 @@
-# Grammaire Formelle QuestLang - EBNF
-
-## 1. Structure generale
-
-```ebnf
 program        = { declaration } ;
-declaration    = world_decl | quest_decl | item_decl | npc_decl | func_decl ;
-```
 
-## 2. Bloc world
+declaration    = world_decl
+| quest_decl
+| item_decl
+| npc_decl
+| var_decl
+| func_decl ;
 
-```ebnf
-world_decl     = "world" identifier "{" world_body "}" ;
-world_body     = [ start_field ] [ start_gold_field ] [ win_condition_field ] ;
-start_field    = "start" ":" identifier ";" ;
-start_gold_field = "start_gold" ":" number ";" ;
-win_condition_field = "win_condition" ":" identifier ";" ;
-```
+world_decl     = "world" IDENTIFIER "{" { world_member } "}" ;
+world_member   = "start" ":" expression ";"
+| "start_gold" ":" expression ";"
+| "win_condition" ":" expression ";"
+| var_decl ;
 
-## 3. Bloc quest
+quest_decl     = "quest" IDENTIFIER "{" { quest_member } "}" ;
+quest_member   = "title" ":" expression ";"
+| "desc" ":" expression ";"
+| "requires" ":" id_list ";"
+| "unlocks" ":" id_list ";"
+| "rewards" ":" reward_list ";"
+| "costs" ":" reward_list ";"
+| "condition" ":" expression ";"
+| script_block ;
 
-```ebnf
-quest_decl     = "quest" identifier "{" quest_body "}" ;
-quest_body     = { quest_field } [ script_block ] ;
-quest_field    = title_field | desc_field | requires_field | unlocks_field
-               | rewards_field | costs_field | condition_field ;
-title_field    = "title" ":" string ";" ;
-desc_field     = "desc" ":" string ";" ;
-requires_field = "requires" ":" identifier_list ";" ;
-unlocks_field  = "unlocks" ":" identifier_list ";" ;
-rewards_field  = "rewards" ":" reward_list ";" ;
-costs_field    = "costs" ":" reward_list ";" ;
-condition_field = "condition" ":" string ";" ;
+item_decl      = "item" IDENTIFIER "{" { item_member } "}" ;
+item_member    = "title" ":" expression ";"
+| "value" ":" expression ";"
+| "stackable" ":" expression ";"
+| "type" ":" IDENTIFIER ";"
+| "type" ":" type_name ";" ;
 
-reward_list    = reward_item { "," reward_item } ;
-reward_item    = "xp" number | "gold" number | number identifier ;
-identifier_list = identifier { "," identifier } ;
-```
+npc_decl       = "npc" IDENTIFIER "{" { npc_member } "}" ;
+npc_member     = "title" ":" expression ";"
+| "location" ":" IDENTIFIER ";"
+| "gives_quest" ":" id_list ";" ;
 
-## 4. Bloc item
+func_decl      = "func" IDENTIFIER "(" [ param_list ] ")" block ;
+param_list     = IDENTIFIER { "," IDENTIFIER } ;
 
-```ebnf
-item_decl      = "item" identifier "{" item_body "}" ;
-item_body      = { item_field } ;
-item_field     = title_field | value_field | stackable_field | type_field ;
-value_field    = "value" ":" number ";" ;
-stackable_field = "stackable" ":" boolean ";" ;
-type_field     = "type" ":" item_type ";" ;
-item_type      = "weapon" | "armor" | "consumable" | "material" | "artifact" ;
-```
+var_decl       = "var" IDENTIFIER "=" expression ";" ;
+script_block   = "script" block ;
 
-## 5. Bloc npc
+block          = "{" { statement } "}" ;
+statement      = var_decl
+| if_stmt
+| while_stmt
+| for_stmt
+| return_stmt
+| give_stmt
+| take_stmt
+| call_stmt
+| assignment
+| expr_stmt ;
 
-```ebnf
-npc_decl       = "npc" identifier "{" npc_body "}" ;
-npc_body       = { npc_field } ;
-npc_field      = title_field | location_field | gives_quest_field ;
-location_field = "location" ":" identifier ";" ;
-gives_quest_field = "gives_quest" ":" identifier_list ";" ;
-```
+if_stmt        = "if" "(" expression ")" block [ "else" block ] ;
+while_stmt     = "while" "(" expression ")" block ;
+for_stmt       = "for" IDENTIFIER "in" expression block ;
+return_stmt    = "return" expression ";" ;
+give_stmt      = "give" reward_list ";" ;
+take_stmt      = "take" reward_list ";" ;
+call_stmt      = "call" IDENTIFIER "(" [ arg_list ] ")" ";" ;
+assignment     = IDENTIFIER ( "=" | "+=" | "-=" ) expression ";" ;
+expr_stmt      = expression ";" ;
 
-## 6. Bloc script (instructions QuestLang)
-
-```ebnf
-script_block   = "script" "{" { statement } "}" ;
-statement      = var_decl | assignment | if_stmt | while_stmt | for_stmt
-               | give_stmt | take_stmt | call_stmt | return_stmt ;
-
-var_decl       = "var" identifier [ "=" expression ] ";" ;
-assignment     = identifier "=" expression ";" ;
-if_stmt        = "if" "(" expression ")" "{" { statement } "}" [ else_clause ] ;
-else_clause    = "else" "{" { statement } "}" ;
-while_stmt     = "while" "(" expression ")" "{" { statement } "}" ;
-for_stmt       = "for" "(" identifier "in" identifier ")" "{" { statement } "}" ;
-give_stmt      = "give" identifier expression ";" ;
-take_stmt      = "take" identifier expression ";" ;
-call_stmt      = "call" identifier "(" [ arg_list ] ")" ";" ;
-return_stmt    = "return" [ expression ] ";" ;
-```
-
-## 7. Fonctions utilisateur
-
-```ebnf
-func_decl      = "func" identifier "(" [ param_list ] ")" "{" { statement } "}" ;
-param_list     = identifier { "," identifier } ;
 arg_list       = expression { "," expression } ;
-```
+id_list        = IDENTIFIER { "," IDENTIFIER } ;
+reward_list    = reward { "," reward } ;
+reward         = "xp" expression
+| "gold" expression
+| expression IDENTIFIER ;
 
-## 8. Expressions
-
-```ebnf
 expression     = or_expr ;
 or_expr        = and_expr { "or" and_expr } ;
-and_expr       = eq_expr { "and" eq_expr } ;
-eq_expr        = rel_expr { ( "==" | "!=" ) rel_expr } ;
-rel_expr       = add_expr { ( "<" | ">" | "<=" | ">=" ) add_expr } ;
-add_expr       = mul_expr { ( "+" | "-" ) mul_expr } ;
-mul_expr       = pow_expr { ( "*" | "/" | "%" ) pow_expr } ;
-pow_expr       = unary_expr [ "^" pow_expr ] ;
+and_expr       = equality_expr { "and" equality_expr } ;
+equality_expr  = comparison_expr { ( "==" | "!=" ) comparison_expr } ;
+comparison_expr= additive_expr { ( "<" | "<=" | ">" | ">=" ) additive_expr } ;
+additive_expr  = multiplicative_expr { ( "+" | "-" ) multiplicative_expr } ;
+multiplicative_expr = power_expr { ( "*" | "/" | "%" ) power_expr } ;
+power_expr     = unary_expr { "^" unary_expr } ;
 unary_expr     = [ "-" | "not" ] primary ;
-primary        = number | string | boolean | identifier
-               | identifier "(" [ arg_list ] ")"
-               | "(" expression ")" ;
-```
 
-## 9. Types et litteraux
+primary        = NUMBER
+| STRING
+| "true"
+| "false"
+| IDENTIFIER
+| IDENTIFIER "(" [ arg_list ] ")"
+| IDENTIFIER "[" expression "]"
+| IDENTIFIER "." IDENTIFIER
+| "(" expression ")"
+| list_literal ;
 
-```ebnf
-number         = digit { digit } [ "." digit { digit } ] ;
-string         = """ { any_char_except_quote } """ ;
-boolean        = "true" | "false" ;
-identifier     = letter { letter | digit | "_" } ;
-letter         = "a" .. "z" | "A" .. "Z" ;
-digit          = "0" .. "9" ;
-```
+list_literal   = "[" [ expression { "," expression } ] "]" ;
+type_name      = "int" | "float" | "bool" | "string" | "list" ;
 
-## 10. Commentaires
-
-```ebnf
-comment        = line_comment | block_comment ;
-line_comment   = "//" { any_char } newline ;
-block_comment  = "/*" { any_char } "*/" ;
-```
-
----
-
-## Remarques sur la grammaire
-
-- **LL(1)** : La grammaire est conçue pour être analysée par un parser récursif descendant LL(1). Aucune récursivité à gauche n'est présente.
-- **Associativité** : Les opérateurs `+`, `-`, `*`, `/`, `%` sont associatifs à gauche. L'opérateur `^` (puissance) est associatif à droite.
-- **Précédence** : `not` > `^` > `* / %` > `+ -` > `< > <= >=` > `== !=` > `and` > `or`.
-- **Ambiguïté** : Aucune ambiguïté dans la grammaire. Les blocs `quest`, `item`, `npc` sont distingués par leur mot-clé initial.
+IDENTIFIER     = letter { letter | digit | "_" } ;
+NUMBER         = digit { digit } [ "." digit { digit } ] ;
+STRING         = '"' { character } '"' ;
+letter         = "A" | ... | "Z" | "a" | ... | "z" | "_" ;
+digit          = "0" | ... | "9" ;
+character      = ? any printable character except " ? ;

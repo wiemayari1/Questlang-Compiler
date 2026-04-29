@@ -17,7 +17,7 @@ class Parser:
             token = self.current()
         err = QLSyntaxError(message, token.line, token.column, self.filename)
         self.errors.append(err)
-        raise err  # CORRECTION : on leve immediatement pour bloquer le pipeline
+        raise err
 
     def current(self):
         if self.pos >= len(self.tokens):
@@ -58,43 +58,27 @@ class Parser:
             self.skip_newlines()
             if self.match(TokenType.EOF):
                 break
-            try:
-                if self.match(TokenType.WORLD):
-                    decl = self.parse_world()
-                elif self.match(TokenType.QUEST):
-                    decl = self.parse_quest()
-                elif self.match(TokenType.ITEM):
-                    decl = self.parse_item()
-                elif self.match(TokenType.NPC):
-                    decl = self.parse_npc()
-                elif self.match(TokenType.FUNC):
-                    decl = self.parse_function()
-                elif self.match(TokenType.VAR):
-                    decl = self.parse_var_decl()
-                else:
-                    self.error(f"Declaration inattendue: {self.current().value!r}")
-                    self.synchronize()
-                    continue
-                if decl:
-                    declarations.append(decl)
-            except QLSyntaxError:
-                raise  # On propage pour que le CLI s'arrete
-            except Exception as e:
-                self.error(f"Erreur: {str(e)}")
-                self.synchronize()
+            if self.match(TokenType.WORLD):
+                decl = self.parse_world()
+            elif self.match(TokenType.QUEST):
+                decl = self.parse_quest()
+            elif self.match(TokenType.ITEM):
+                decl = self.parse_item()
+            elif self.match(TokenType.NPC):
+                decl = self.parse_npc()
+            elif self.match(TokenType.FUNC):
+                decl = self.parse_function()
+            elif self.match(TokenType.VAR):
+                decl = self.parse_var_decl()
+            else:
+                self.error(f"Declaration inattendue: {self.current().value!r}")
+            if decl:
+                declarations.append(decl)
 
         program = ProgramNode(declarations)
         for decl in declarations:
             program.add_declaration(decl)
         return program
-
-    def synchronize(self):
-        self.consume()
-        sync = {TokenType.WORLD, TokenType.QUEST, TokenType.ITEM, TokenType.NPC, TokenType.FUNC, TokenType.VAR}
-        while not self.match(TokenType.EOF):
-            if self.current().type in sync:
-                return
-            self.consume()
 
     def parse_world(self):
         line, col = self.current().line, self.current().column
@@ -107,12 +91,14 @@ class Parser:
         self.skip_newlines()
         while not self.match(TokenType.RBRACE) and not self.match(TokenType.EOF):
             self.skip_newlines()
-            if self.match(TokenType.RBRACE): break
+            if self.match(TokenType.RBRACE):
+                break
             if self.match(TokenType.VAR):
                 variables.append(self.parse_var_decl())
             else:
                 prop = self.parse_world_property()
-                if prop: properties[prop[0]] = prop[1]
+                if prop:
+                    properties[prop[0]] = prop[1]
             self.skip_newlines()
         self.expect(TokenType.RBRACE)
         node = WorldNode(name, properties, line, col)
@@ -120,7 +106,11 @@ class Parser:
         return node
 
     def parse_world_property(self):
-        key_map = {TokenType.START: "start", TokenType.START_GOLD: "start_gold", TokenType.WIN_CONDITION: "win_condition"}
+        key_map = {
+            TokenType.START: "start",
+            TokenType.START_GOLD: "start_gold",
+            TokenType.WIN_CONDITION: "win_condition"
+        }
         if self.current().type in key_map:
             key = key_map[self.current().type]
             self.consume()
@@ -143,12 +133,14 @@ class Parser:
         self.skip_newlines()
         while not self.match(TokenType.RBRACE) and not self.match(TokenType.EOF):
             self.skip_newlines()
-            if self.match(TokenType.RBRACE): break
+            if self.match(TokenType.RBRACE):
+                break
             if self.match(TokenType.SCRIPT):
                 script = self.parse_script()
             else:
                 prop = self.parse_quest_property()
-                if prop: properties[prop[0]] = prop[1]
+                if prop:
+                    properties[prop[0]] = prop[1]
             self.skip_newlines()
         self.expect(TokenType.RBRACE)
         return QuestNode(name, properties, script, line, col)
@@ -195,17 +187,25 @@ class Parser:
         self.skip_newlines()
         while not self.match(TokenType.RBRACE) and not self.match(TokenType.EOF):
             self.skip_newlines()
-            if self.match(TokenType.RBRACE): break
+            if self.match(TokenType.RBRACE):
+                break
             prop = self.parse_item_property()
-            if prop: properties[prop[0]] = prop[1]
+            if prop:
+                properties[prop[0]] = prop[1]
             self.skip_newlines()
         self.expect(TokenType.RBRACE)
         return ItemNode(name, properties, line, col)
 
     def parse_item_property(self):
-        prop_map = {TokenType.TITLE: "title", TokenType.VALUE: "value", TokenType.STACKABLE: "stackable", TokenType.TYPE: "type"}
-        type_kws = {TokenType.WEAPON, TokenType.ARMOR, TokenType.KEY, TokenType.REAGENT,
-                    TokenType.CONSUMABLE, TokenType.MISC, TokenType.ARTIFACT, TokenType.MATERIAL, TokenType.IDENTIFIER}
+        prop_map = {
+            TokenType.TITLE: "title", TokenType.VALUE: "value",
+            TokenType.STACKABLE: "stackable", TokenType.TYPE: "type"
+        }
+        type_kws = {
+            TokenType.WEAPON, TokenType.ARMOR, TokenType.KEY, TokenType.REAGENT,
+            TokenType.CONSUMABLE, TokenType.MISC, TokenType.ARTIFACT, TokenType.MATERIAL,
+            TokenType.IDENTIFIER
+        }
         if self.current().type in prop_map:
             key = prop_map[self.current().type]
             self.consume()
@@ -216,9 +216,14 @@ class Parser:
                 else:
                     value = "misc"
             elif key == "stackable":
-                if self.match(TokenType.TRUE): self.consume(); value = True
-                elif self.match(TokenType.FALSE): self.consume(); value = False
-                else: value = self.parse_expression()
+                if self.match(TokenType.TRUE):
+                    self.consume()
+                    value = True
+                elif self.match(TokenType.FALSE):
+                    self.consume()
+                    value = False
+                else:
+                    value = self.parse_expression()
             else:
                 value = self.parse_expression()
             self.expect(TokenType.SEMICOLON)
@@ -237,15 +242,21 @@ class Parser:
         self.skip_newlines()
         while not self.match(TokenType.RBRACE) and not self.match(TokenType.EOF):
             self.skip_newlines()
-            if self.match(TokenType.RBRACE): break
+            if self.match(TokenType.RBRACE):
+                break
             prop = self.parse_npc_property()
-            if prop: properties[prop[0]] = prop[1]
+            if prop:
+                properties[prop[0]] = prop[1]
             self.skip_newlines()
         self.expect(TokenType.RBRACE)
         return NPCNode(name, properties, line, col)
 
     def parse_npc_property(self):
-        prop_map = {TokenType.TITLE: "title", TokenType.LOCATION: "location", TokenType.GIVES_QUEST: "gives_quest"}
+        prop_map = {
+            TokenType.TITLE: "title",
+            TokenType.LOCATION: "location",
+            TokenType.GIVES_QUEST: "gives_quest"
+        }
         if self.current().type in prop_map:
             key = prop_map[self.current().type]
             self.consume()
@@ -298,22 +309,33 @@ class Parser:
         self.skip_newlines()
         while not self.match(TokenType.RBRACE) and not self.match(TokenType.EOF):
             self.skip_newlines()
-            if self.match(TokenType.RBRACE): break
+            if self.match(TokenType.RBRACE):
+                break
             stmt = self.parse_statement()
-            if stmt: stmts.append(stmt)
+            if stmt:
+                stmts.append(stmt)
             self.skip_newlines()
         return stmts
 
     def parse_statement(self):
-        if self.match(TokenType.VAR): return self.parse_var_decl()
-        elif self.match(TokenType.IF): return self.parse_if()
-        elif self.match(TokenType.WHILE): return self.parse_while()
-        elif self.match(TokenType.FOR): return self.parse_for()
-        elif self.match(TokenType.RETURN): return self.parse_return()
-        elif self.match(TokenType.GIVE): return self.parse_give()
-        elif self.match(TokenType.TAKE): return self.parse_take()
-        elif self.match(TokenType.CALL): return self.parse_call_stmt()
-        elif self.match(TokenType.IDENTIFIER): return self.parse_assignment_or_call()
+        if self.match(TokenType.VAR):
+            return self.parse_var_decl()
+        elif self.match(TokenType.IF):
+            return self.parse_if()
+        elif self.match(TokenType.WHILE):
+            return self.parse_while()
+        elif self.match(TokenType.FOR):
+            return self.parse_for()
+        elif self.match(TokenType.RETURN):
+            return self.parse_return()
+        elif self.match(TokenType.GIVE):
+            return self.parse_give()
+        elif self.match(TokenType.TAKE):
+            return self.parse_take()
+        elif self.match(TokenType.CALL):
+            return self.parse_call_stmt()
+        elif self.match(TokenType.IDENTIFIER):
+            return self.parse_assignment_or_call()
         else:
             self.error(f"Instruction inattendue: {self.current().value!r}")
             self.consume()
@@ -427,10 +449,12 @@ class Parser:
             self.error("Attendu '=', '+=', '-=' ou '(' apres l'identifiant")
             while not self.match(TokenType.SEMICOLON, TokenType.RBRACE, TokenType.EOF, TokenType.NEWLINE):
                 self.consume()
-            if self.match(TokenType.SEMICOLON): self.consume()
+            if self.match(TokenType.SEMICOLON):
+                self.consume()
             return None
 
-    def parse_expression(self): return self.parse_or_expr()
+    def parse_expression(self):
+        return self.parse_or_expr()
 
     def parse_or_expr(self):
         left = self.parse_and_expr()
@@ -497,16 +521,23 @@ class Parser:
 
     def parse_primary(self):
         line, col = self.current().line, self.current().column
-        if self.match(TokenType.NUMBER): return LiteralNode(self.consume().value, line, col)
-        if self.match(TokenType.STRING): return LiteralNode(self.consume().value, line, col)
-        if self.match(TokenType.TRUE): self.consume(); return LiteralNode(True, line, col)
-        if self.match(TokenType.FALSE): self.consume(); return LiteralNode(False, line, col)
+        if self.match(TokenType.NUMBER):
+            return LiteralNode(self.consume().value, line, col)
+        if self.match(TokenType.STRING):
+            return LiteralNode(self.consume().value, line, col)
+        if self.match(TokenType.TRUE):
+            self.consume()
+            return LiteralNode(True, line, col)
+        if self.match(TokenType.FALSE):
+            self.consume()
+            return LiteralNode(False, line, col)
         if self.match(TokenType.LPAREN):
             self.consume()
             expr = self.parse_expression()
             self.expect(TokenType.RPAREN)
             return expr
-        if self.match(TokenType.LBRACKET): return self.parse_list_literal()
+        if self.match(TokenType.LBRACKET):
+            return self.parse_list_literal()
         if self.match(TokenType.CALL):
             self.consume()
             name_tok = self.expect(TokenType.IDENTIFIER)

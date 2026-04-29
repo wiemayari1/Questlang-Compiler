@@ -36,6 +36,7 @@ window.QUESTLANG_EXAMPLES = {{ examples | tojson | safe }};
             <input type="file" id="file-input" accept=".ql" style="display:none">
             <button id="btn-step" class="btn btn-ghost">Pas-a-pas</button>
             <button id="btn-clear" class="btn btn-ghost">Effacer</button>
+            <button id="btn-export-html" class="btn btn-ghost" title="Exporter le rapport HTML">&#128196; HTML</button>
             <button id="btn-compile" class="btn btn-run">&#9658; Compiler</button>
         </div>
     </header>
@@ -60,7 +61,6 @@ window.QUESTLANG_EXAMPLES = {{ examples | tojson | safe }};
                 <div id="view-tabs">
                     <button class="vtab active" data-tab="analysis">Analyse</button>
                     <button class="vtab" data-tab="map">Carte</button>
-                    <button class="vtab" data-tab="simulation">Simulation</button>
                     <button class="vtab" data-tab="tokens">Tokens</button>
                     <button class="vtab" data-tab="ast">AST</button>
                     <button class="vtab" data-tab="ir">IR</button>
@@ -194,40 +194,6 @@ window.QUESTLANG_EXAMPLES = {{ examples | tojson | safe }};
                         <span class="leg-item"><span class="leg-box quest"></span> Quete</span>
                         <span class="leg-item"><span class="leg-box item"></span> Item</span>
                         <span class="leg-item"><span class="leg-box npc"></span> PNJ</span>
-                    </div>
-                </div>
-
-                <!-- Simulation -->
-                <div id="view-simulation" class="view-pane">
-                    <div id="sim-header">
-                        <div id="sim-inventory">
-                            <div class="inv-slot">
-                                <span class="inv-label">Or</span>
-                                <span class="inv-val" id="sim-gold">0</span>
-                            </div>
-                            <div class="inv-slot">
-                                <span class="inv-label">XP</span>
-                                <span class="inv-val" id="sim-xp">0</span>
-                            </div>
-                            <div class="inv-slot">
-                                <span class="inv-label">Items</span>
-                                <span class="inv-val" id="sim-item-count">0</span>
-                            </div>
-                        </div>
-                        <div id="sim-controls">
-                            <button id="sim-reset" class="btn btn-sm">Reset</button>
-                            <button id="sim-prev" class="btn btn-sm">&lt; Prec</button>
-                            <button id="sim-play" class="btn btn-sm">Play</button>
-                            <button id="sim-next" class="btn btn-sm">Suiv &gt;</button>
-                        </div>
-                    </div>
-                    <div id="sim-progress"><div id="sim-progress-bar"></div></div>
-                    <div id="sim-timeline">
-                        <p style="color:#444460">Compilez pour simuler</p>
-                    </div>
-                    <div id="sim-detail">
-                        <div id="sim-detail-title">Selectionnez une etape</div>
-                        <div id="sim-detail-body"></div>
                     </div>
                 </div>
 
