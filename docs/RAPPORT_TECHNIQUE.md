@@ -1,84 +1,62 @@
-# Rapport Technique : QuestLang Compiler
+# Rapport Technique - QuestLang Compiler
 
-## 1. Introduction
+Ce document détaille l'architecture interne, les choix technologiques, la structure du compilateur et les solutions apportées aux défis rencontrés lors du développement de **QuestLang**.
 
-QuestLang est un langage spécifique au domaine (DSL) conçu spécifiquement pour la description formelle de mondes de jeux de rôle (RPG).
-Ce projet implémente un compilateur complet, incluant l'analyse lexicale, syntaxique, sémantique, et la génération de code. Le compilateur traduit un fichier source `.ql` en une représentation intermédiaire JSON (IR) rigoureusement vérifiée, accompagnée d'un graphe visuel et d'une interface web.
+---
 
-L'objectif majeur de QuestLang est de garantir la **cohérence logique d'un monde RPG avant son exécution** (ex. quêtes inaccessibles, inflation de ressources, interblocages).
+## 1. Choix technologiques (outils, langages)
+
+- **Python (3.10+)** : Choisi comme langage principal pour le développement du compilateur. Python offre une flexibilité exceptionnelle pour le typage dynamique, la manipulation d'arbres (AST) et une riche bibliothèque standard, idéale pour l'analyse lexicale, syntaxique et sémantique.
+- **Flask (Python)** : Utilisé comme framework backend léger pour l'interface web (API REST et rendu des templates HTML).
+- **HTML5 / CSS3 / JavaScript Vanilla** : Choix délibéré d'éviter les frameworks front-end lourds (comme React ou Angular) au profit d'une interface web performante, simple et directement intégrable via Flask.
+- **vis.js** : Librairie JavaScript utilisée pour la visualisation interactive du monde sous forme de graphe, permettant aux utilisateurs d'inspecter les relations complexes entre Quêtes, PNJ et Objets.
 
 ---
 
 ## 2. Architecture du Compilateur
 
-Le compilateur suit une architecture modulaire classique, structurée autour d'un pipeline séquentiel :
+Le compilateur QuestLang ne repose sur aucun générateur de parseur externe (comme ANTLR, PLY ou YACC). Il s'agit d'un compilateur implémenté "from scratch", permettant un contrôle total sur le pipeline de compilation.
 
-1. **Lexer (Analyseur Lexical)** : Transforme le code source brut en une séquence de tokens (mots-clés, identifiants, valeurs).
-2. **Parser (Analyseur Syntaxique)** : Vérifie l'ordre des tokens selon une grammaire `LL(1)` et génère un Arbre Syntaxique Abstrait (AST).
-3. **Analyseur Sémantique** : Parcourt l'AST à travers quatre passes distinctes pour valider la logique du jeu.
-4. **Optimiseur** : Simplifie l'AST (ex: Constant Folding) pour optimiser les performances futures.
-5. **Générateur de Code** : Transforme l'AST validé en une représentation JSON lisible par les moteurs de jeux (IR).
+- **Lexer** personnalisé (basé sur les expressions régulières) pour la tokénisation.
+- **Parseur LL(1)** de type "Recursive Descent" (descente récursive), permettant des messages d'erreur de syntaxe très précis et personnalisés.
 
 ---
 
-## 3. Analyse Sémantique (Les 4 Passes)
+## 3. La structure de la grammaire et de l'AST
 
-La force de QuestLang réside dans sa validation statique approfondie. Le module sémantique (`src/semantic.py`) effectue 4 passes indépendantes :
-
-### Passe 1 : Analyse des Symboles
-Cette passe s'assure que chaque entité est déclarée correctement et uniquement.
-- **Vérifications :** Détection de doublons (deux quêtes portant le même nom) et vérification que chaque référence pointant vers une entité (ex: `unlocks: quete_inconnue;`) pointe bien vers une entité déclarée.
-
-### Passe 2 : Analyse d'Accessibilité (Graphes)
-Utilise un algorithme de Parcours en Profondeur (DFS - *Depth-First Search*) de complexité `O(V + E)`.
-- **Vérifications :** Assure qu'à partir de la quête de départ, toutes les autres quêtes sont atteignables. Détecte également si la condition de victoire (`win_condition`) peut réellement être accomplie.
-
-### Passe 3 : Analyse Économique (Flux de Ressources)
-Vérifie la gestion des objets et de l'or.
-- **Vérifications :** Détecte l'inflation excessive (trop d'or distribué sans coût), le déficit structurel (les coûts des quêtes dépassent les récompenses distribuées), et les objets créés mais jamais consommés.
-
-### Passe 4 : Analyse des Cycles et Interblocages (Deadlocks)
-Utilise l'algorithme de **Tarjan** pour trouver les composantes fortement connexes (SCC) de complexité `O(V + E)`.
-- **Vérifications :** Détecte les boucles infinies de prérequis (Quête A dépend de B, qui dépend de A), rendant le monde irrésoluble.
+- **Grammaire EBNF** : Conçue pour être intuitive pour la déclaration d'éléments de jeu de rôle (RPG). Elle permet de déclarer des blocs de type `world`, `quest`, `item`, `npc` et `func`. Elle supporte un système complet d'expressions et d'instructions de contrôle (`if`, `while`, `for`), ainsi que des instructions spécifiques au domaine comme `give` et `take`. (*Voir `docs/GRAMMAIRE_EBNF.md` pour la définition complète*).
+- **Arbre Syntaxique Abstrait (AST)** : Construit de manière orientée objet, chaque type de nœud héritant d'une classe de base `ASTNode`. La racine est le `ProgramNode`. Les nœuds stockent leur position (ligne et colonne) dans le code source d'origine pour garantir des remontées d'erreurs précises.
 
 ---
 
-## 4. Gestion Robuste des Erreurs
+## 4. Analyse Sémantique (Les 4 Passes)
 
-Une architecture d'exceptions propre a été conçue (`src/errors.py`) pour stopper proprement la compilation à l'étape défectueuse :
-- `LexicalError` : Caractère invalide (ex: `@`).
-- `SyntaxError` : Mauvaise formation grammaticale (ex: `title "Le titre"` sans deux-points `:`).
-- `SemanticError` : Incohérence logique (ex: quête inaccessible).
-- `GenerationError` : Échec lors de la transformation JSON/Graphe.
+Pour s'assurer qu'un monde défini par l'utilisateur ne comporte pas de quêtes inaccessibles, d'objets impossibles à obtenir ou de boucles bloquantes (deadlocks) rendant le jeu injouable, un pipeline sémantique strict en 4 passes a été mis en place :
 
-Lorsqu'une de ces erreurs survient, l'interface Web (API Flask) retourne un statut HTTP 200 accompagné du message précis (ligne et colonne de l'erreur) pour afficher le diagnostic à l'utilisateur, évitant ainsi le crash du serveur (Erreur HTTP 500).
-
----
-
-## 5. Optimisations et Débogages Récents
-
-Lors du développement, plusieurs défis techniques critiques ont été relevés :
-
-1. **Boucle infinie dans l'Optimiseur (`RecursionError`) :**
-   L'optimiseur implémentait un visiteur (`_generic_visit`) qui traversait récursivement les attributs internes Python des `Enum` au lieu de se limiter strictement aux nœuds `ASTNode`. Une refactorisation stricte du filtrage des objets a supprimé ces blocages inattendus (qui causaient un "Timeout" dans le navigateur).
-2. **Propagations des erreurs dans l'API Flask :**
-   Les erreurs de compilation métier étaient interceptées mais masquées par le serveur web (qui retournait un code `500 Internal Server Error`). Le backend a été corrigé pour renvoyer des rapports de diagnostic propres sous format JSON, ce qui permet à l'interface d'indiquer exactement quelle étape (Lexique, Syntaxe, etc.) a échoué.
+1. **Résolution des Symboles** : Vérification des doublons et des références indéfinies via une table des symboles.
+2. **Accessibilité (Graphes)** : Utilisation d'un algorithme de parcours en profondeur (DFS) itératif (complexité $O(V+E)$) pour vérifier que toutes les quêtes et la condition de victoire sont accessibles depuis l'état de départ.
+3. **Économie (Analyse de Flux)** : Vérification de la création de ressources (inflation, déficit d'objets essentiels à la progression).
+4. **Détection de Cycles (Deadlocks)** : Implémentation de l'**algorithme de Tarjan** (Recherche des composantes fortement connexes - SCC) pour détecter les interblocages stricts où plusieurs quêtes s'attendent mutuellement.
 
 ---
 
-## 6. Interface Utilisateur (QuestLang Forge)
+## 5. Les défis rencontrés et solutions apportées
 
-Une interface web a été développée en **JavaScript Vanilla, HTML et CSS** et reliée via un backend **Flask (Python)**.
-Elle permet :
-- L'édition de code source en temps réel.
-- L'affichage immédiat des diagnostics dans une console intégrée.
-- La visualisation dynamique du graphe du monde sous forme de réseau (bibliothèque `vis.js`).
-- L'affichage de l'état du pipeline pour comprendre à quelle étape de la compilation le code a échoué.
+### 5.1 Temps d'exécution de la Compilation (Timeout)
+**Problème :** L'analyse de mondes complexes avec des dépendances cycliques importantes entraînait parfois des lenteurs excessives ou des délais d'attente (timeouts) dans l'interface web (limite initiale de 8 secondes).
+**Solution :**
+- Remplacement d'algorithmes récursifs naïfs par des parcours itératifs ou par l'algorithme de Tarjan beaucoup plus optimisé pour les cycles.
+- Ajustement de la configuration de l'interface et optimisation des structures de données (utilisation de dictionnaires et d'ensembles de hash Python `set()`) pour réduire la complexité de l'analyse sémantique.
 
-*(Note : Afin de focaliser l'interface sur son rôle principal d'outil de conception et de validation de langages, le module de Simulation a été volontairement retiré du périmètre.)*
+### 5.2 Génération du Rapport HTML et Expérience Utilisateur (UI)
+**Problème :** L'interface web et l'exportation des données de compilation devaient être fluides, et le rapport de compilation devait être facilement partageable.
+**Solution :**
+- Intégration d'une fonctionnalité `--html` dans la CLI et d'un bouton d'export dans l'interface web pour appeler la méthode `CodeGenerator.to_html()`.
+- Implémentation d'un "Mode pas-à-pas" dans l'UI permettant de visualiser le succès ou l'échec des 4 passes sémantiques en temps réel, offrant un retour visuel crucial lors de l'apprentissage du langage.
+- Amélioration de la console web avec la propagation exacte des lignes/colonnes d'erreurs (grâce à l'AST) pour placer des marqueurs visuels dans l'éditeur.
 
 ---
 
-## 7. Conclusion
+## 6. Conclusion
 
-Le compilateur QuestLang démontre avec succès la création d'un langage dédié, intégrant des concepts fondamentaux de la théorie de la compilation (Lexing, Parsing `LL(1)`, Visiteurs AST) couplés à des algorithmes de théorie des graphes (DFS, Algorithme de Tarjan) pour prouver des propriétés logiques complexes. L'outil est à la fois robuste, fonctionnel et pédagogique.
+Le développement du compilateur **QuestLang** a permis de créer un outil robuste, spécifiquement adapté à la conception de logiques de RPG. En faisant le choix de tout implémenter "from scratch" en Python, le projet a pu intégrer des vérifications sémantiques avancées (accessibilité, économie, détection de deadlocks) garantissant la viabilité d'un monde de jeu avant même son exécution. L'interface web interactive vient sublimer ce moteur d'analyse statique, rendant la création de mondes accessible tout en conservant une grande rigueur technique sous le capot.
