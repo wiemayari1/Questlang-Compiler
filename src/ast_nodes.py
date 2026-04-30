@@ -15,6 +15,21 @@ class ASTNode:
         self.line = line
         self.column = column
 
+    def to_dict(self):
+        result = {"type": self.__class__.__name__}
+        for key, value in self.__dict__.items():
+            if key == 'node_type':
+                continue
+            if isinstance(value, ASTNode):
+                result[key] = value.to_dict()
+            elif isinstance(value, list):
+                result[key] = [v.to_dict() if isinstance(v, ASTNode) else v for v in value]
+            elif isinstance(value, dict):
+                result[key] = {k: (v.to_dict() if isinstance(v, ASTNode) else v) for k, v in value.items()}
+            else:
+                result[key] = value
+        return result
+
 class ProgramNode(ASTNode):
     def __init__(self, declarations, line=1, column=1):
         super().__init__(NodeType.PROGRAM, line, column)
