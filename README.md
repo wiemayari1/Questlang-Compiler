@@ -197,8 +197,4 @@ questlang/
 |-- README.md
 ```
 
----
 
-## Auteurs
-
-Ayari Wiem / Ourari Ranim / Ayadi Soumaya / Sakroufi Aya
